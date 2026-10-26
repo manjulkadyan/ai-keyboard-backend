@@ -5,6 +5,8 @@ COPY gradlew settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
 RUN ./gradlew --no-daemon dependencies > /dev/null
 COPY src ./src
+# processResources packages prompts/ as /prompts on the classpath; without it kb-api fails at startup.
+COPY prompts ./prompts
 RUN ./gradlew --no-daemon installDist -x test
 
 FROM eclipse-temurin:17-jre

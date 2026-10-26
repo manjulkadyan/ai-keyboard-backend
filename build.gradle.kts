@@ -42,8 +42,13 @@ dependencies {
 }
 
 // The prompt files live in the repo's prompts/ directory (TRD §4.4.3) and ship on the classpath under /prompts.
+// A missing directory would be skipped silently and the service would fail at startup, so it fails the build.
 tasks.processResources {
-    from("prompts") { into("prompts") }
+    val promptsDir = layout.projectDirectory.dir("prompts").asFile
+    doFirst {
+        check(promptsDir.isDirectory && !promptsDir.listFiles().isNullOrEmpty()) { "prompts/ is missing or empty" }
+    }
+    from(promptsDir) { into("prompts") }
 }
 
 tasks.test {
