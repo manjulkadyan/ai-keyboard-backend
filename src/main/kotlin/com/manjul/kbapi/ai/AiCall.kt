@@ -7,7 +7,10 @@ import com.manjul.kbapi.limits.Limits
 import com.manjul.kbapi.limits.clientIp
 import com.manjul.kbapi.logField
 import io.ktor.server.application.ApplicationCall
+import com.manjul.kbapi.limits.TokenUsage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -29,6 +32,10 @@ class AiCall(
     private var cacheRead = 0L
     private var cacheWrite = 0L
 
+    /** The running call's usage as of `message_start`, and the text chars it has produced since. */
+    private var partial: TokenUsage? = null
+    private var partialChars = 0L
+
     init {
         call.logField(LogField.PROMPT_ID, prompt.ref)
         call.logField(LogField.MODEL, model)
@@ -48,8 +55,34 @@ class AiCall(
         limits.quota.refund(call.principal, clientReqId, a.reservedDay)
     }
 
+    override fun onUsage(model: String, usage: TokenUsage) {
+        partial = usage
+        partialChars = 0
+    }
+
+    override fun onText(chars: Int) {
+        partialChars += chars
+    }
+
+    /**
+     * A call that never reached `Done` was still billed for its input and the output generated so far,
+     * so the spend breaker (TRD §4.4.4) counts it: `message_start` usage, with output estimated from the
+     * text relayed (thinking tokens are not visible and are not counted).
+     */
+    override suspend fun onUnfinished(model: String) {
+        val u = partial ?: return
+        partial = null
+        val estimatedOutput = (partialChars + CHARS_PER_TOKEN - 1) / CHARS_PER_TOKEN
+        val usage = u.copy(output = maxOf(u.output, estimatedOutput))
+        withContext(NonCancellable) { addUsage(model, usage) }
+    }
+
     override suspend fun onDone(model: String, done: GatewayEvent.Done) {
-        val u = done.usage
+        partial = null
+        addUsage(model, done.usage)
+    }
+
+    private suspend fun addUsage(model: String, u: TokenUsage) {
         input += u.input
         output += u.output
         cacheRead += u.cacheRead
@@ -70,6 +103,11 @@ class AiCall(
 
     override fun onError(code: GatewayErrorCode) {
         call.logField(LogField.ERROR_CODE, "upstream_" + code.name.lowercase())
+    }
+
+    private companion object {
+        /** A rough chars-per-token ratio for estimating the output of an unfinished call. */
+        const val CHARS_PER_TOKEN = 4L
     }
 }
 

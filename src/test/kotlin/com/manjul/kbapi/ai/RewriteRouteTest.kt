@@ -1,6 +1,10 @@
 package com.manjul.kbapi.ai
 
 import com.manjul.kbapi.limits.MAX_ATTEMPTS_PER_REQ_ID
+import com.manjul.kbapi.limits.ModelPrice
+import com.manjul.kbapi.testing.StartUsage
+import com.manjul.kbapi.testing.Usage1
+import com.manjul.kbapi.testing.started
 import com.manjul.kbapi.testing.authed
 import com.manjul.kbapi.testing.aiServices
 import com.manjul.kbapi.testing.contractCall
@@ -294,6 +298,41 @@ class RewriteRouteTest {
         ) { authed() }
         assertEquals(HttpStatusCode.BadRequest, response.status)
         assertEquals("bad_request", err(body))
+    }
+
+    @Test
+    fun `a stream that fails after text still records the spend so far`() {
+        val gateway = FakeGateway(listOf(started(), text("a".repeat(400)), text("b"), done()), failAt = 2, error = GatewayErrorCode.OVERLOADED)
+        val services = aiServices(gateway)
+        testApp(services) {
+            val (_, body) = contractCall(HttpMethod.Post, "/v1/rewrite", rewriteBody()) { authed() }
+            assertEquals("error", parseSse(body).last().event)
+            // message_start input and cache, plus about 100 output tokens for the 400 chars sent.
+            val expected = ModelPrice.HAIKU.cost(StartUsage.copy(output = 100))
+            assertEquals(expected, services.limits.spend.rollingHourUsd(), 1e-12)
+        }
+    }
+
+    @Test
+    fun `a call that fails after message_start but before text records its input`() {
+        val gateway = FakeGateway(listOf(started(), text("never")), failAt = 1, error = GatewayErrorCode.OVERLOADED)
+        val services = aiServices(gateway)
+        testApp(services) {
+            val (response, _) = contractCall(HttpMethod.Post, "/v1/rewrite", rewriteBody()) { authed() }
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+            assertEquals(ModelPrice.HAIKU.cost(StartUsage), services.limits.spend.rollingHourUsd(), 1e-12)
+            assertEquals(10, quotaLeft())
+        }
+    }
+
+    @Test
+    fun `a completed call is recorded once, from its final usage`() {
+        val gateway = FakeGateway(listOf(started(), text("ok"), done()))
+        val services = aiServices(gateway)
+        testApp(services) {
+            contractCall(HttpMethod.Post, "/v1/rewrite", rewriteBody()) { authed() }
+            assertEquals(ModelPrice.HAIKU.cost(Usage1), services.limits.spend.rollingHourUsd(), 1e-12)
+        }
     }
 
     @Test

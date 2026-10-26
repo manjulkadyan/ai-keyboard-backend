@@ -20,6 +20,11 @@ fun done(stopReason: String = "end_turn") = GatewayEvent.Done(stopReason, Usage1
 
 fun text(t: String) = GatewayEvent.TextDelta(t)
 
+/** What message_start reports: input and cache usage, output not yet known. */
+val StartUsage = TokenUsage(input = 100, output = 1, cacheRead = 900, cacheWrite = 0)
+
+fun started(u: TokenUsage = StartUsage) = GatewayEvent.Usage(u)
+
 fun aiServices(gateway: ModelGateway, config: Config = testConfig()) = testServices(config).copy(gateway = gateway)
 
 data class SseFrame(val event: String, val data: JsonObject)

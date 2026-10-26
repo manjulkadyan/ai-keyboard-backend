@@ -22,6 +22,12 @@ sealed interface GatewayEvent {
         override fun toString(): String = "TextDelta(${text.length} chars)"
     }
 
+    /**
+     * The usage known so far (cumulative), sent when `message_start` arrives: input and cache tokens are
+     * billed from here on even if the stream never reaches [Done].
+     */
+    data class Usage(val usage: TokenUsage) : GatewayEvent
+
     /** The end of the call: the API stop reason (`end_turn`, `max_tokens`, `refusal`, ...) and the token usage. */
     data class Done(val stopReason: String, val usage: TokenUsage) : GatewayEvent
 }

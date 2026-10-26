@@ -71,6 +71,7 @@ class EvalRunner(
                         sb.append(e.text)
                     }
                     is GatewayEvent.Done -> done = e
+                    is GatewayEvent.Usage -> Unit
                 }
             }
         }
@@ -232,6 +233,7 @@ class Judge(private val gateway: ModelGateway, val model: String) {
                 when (e) {
                     is GatewayEvent.TextDelta -> sb.append(e.text)
                     is GatewayEvent.Done -> usage = TokenTotals.of(e.usage)
+                    is GatewayEvent.Usage -> Unit
                 }
             }
         } catch (e: CancellationException) {

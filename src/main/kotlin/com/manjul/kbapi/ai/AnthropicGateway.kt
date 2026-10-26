@@ -76,7 +76,10 @@ class AnthropicGateway(private val client: AnthropicClient) : ModelGateway {
                 }
                 when (next) {
                     is StreamItem.Text -> if (next.text.isNotEmpty()) emit(GatewayEvent.TextDelta(next.text))
-                    is StreamItem.Usage -> usage.add(next)
+                    is StreamItem.Usage -> {
+                        usage.add(next)
+                        emit(GatewayEvent.Usage(usage.total()))
+                    }
                     is StreamItem.Stop -> {
                         stopReason = next.reason ?: stopReason
                         usage.add(next.usage)

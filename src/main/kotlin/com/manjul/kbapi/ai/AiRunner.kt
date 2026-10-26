@@ -3,6 +3,7 @@ package com.manjul.kbapi.ai
 import com.manjul.kbapi.ApiError
 import com.manjul.kbapi.ApiException
 import com.manjul.kbapi.Errors
+import com.manjul.kbapi.limits.TokenUsage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.catch
@@ -32,10 +33,17 @@ sealed interface Outcome {
     data class Failed(val code: GatewayErrorCode) : Outcome
 }
 
-/** Per-call hooks: [onDone] after every model call (spend and token logging), [onError] on a gateway failure. */
+/**
+ * Per-call hooks: [onDone] after every model call (spend and token logging), [onError] on a gateway failure.
+ * [onUsage] and [onText] report a call's progress; [onUnfinished] is called once for a call that started
+ * but never reached `Done` (upstream failure, or the stream was cancelled), so its partial usage can be counted.
+ */
 interface CallHooks {
     suspend fun onDone(model: String, done: GatewayEvent.Done)
     fun onError(code: GatewayErrorCode)
+    fun onUsage(model: String, usage: TokenUsage) {}
+    fun onText(chars: Int) {}
+    suspend fun onUnfinished(model: String) {}
 }
 
 /**
@@ -62,14 +70,20 @@ class AiRunner(private val gateway: ModelGateway, private val stepUpModel: Strin
         for ((index, attempt) in attempts.withIndex()) {
             val channel = items(scope, attempt)
             var opened: Opened? = null
+            var finished = false
             try {
                 while (opened == null) {
                     val item = channel.receiveCatching().getOrNull() ?: fail(hooks, GatewayErrorCode.OTHER)
                     when (item) {
                         is StreamItem.Failed -> fail(hooks, item.code)
                         is StreamItem.Event -> when (val e = item.event) {
-                            is GatewayEvent.TextDelta -> if (e.text.isNotEmpty()) opened = Opened.Streaming(attempt.model, e.text, channel)
+                            is GatewayEvent.Usage -> hooks.onUsage(attempt.model, e.usage)
+                            is GatewayEvent.TextDelta -> if (e.text.isNotEmpty()) {
+                                hooks.onText(e.text.length)
+                                opened = Opened.Streaming(attempt.model, e.text, channel)
+                            }
                             is GatewayEvent.Done -> {
+                                finished = true
                                 hooks.onDone(attempt.model, e)
                                 if (e.stopReason != StopReasons.REFUSAL) {
                                     opened = Opened.Empty(attempt.model, e)
@@ -83,7 +97,10 @@ class AiRunner(private val gateway: ModelGateway, private val stepUpModel: Strin
                     }
                 }
             } finally {
-                if (opened !is Opened.Streaming) channel.cancel()
+                if (opened !is Opened.Streaming) {
+                    channel.cancel()
+                    if (!finished) hooks.onUnfinished(attempt.model)
+                }
             }
             if (opened != null) return opened
         }
@@ -102,6 +119,7 @@ class AiRunner(private val gateway: ModelGateway, private val stepUpModel: Strin
 
     /** Relays the rest of a stream to [onText]. Never throws for upstream failures. */
     suspend fun drain(stream: Opened.Streaming, hooks: CallHooks, onText: suspend (String) -> Unit): Outcome {
+        var finished = false
         try {
             for (item in stream.rest) {
                 when (item) {
@@ -110,8 +128,13 @@ class AiRunner(private val gateway: ModelGateway, private val stepUpModel: Strin
                         return Outcome.Failed(item.code)
                     }
                     is StreamItem.Event -> when (val e = item.event) {
-                        is GatewayEvent.TextDelta -> if (e.text.isNotEmpty()) onText(e.text)
+                        is GatewayEvent.Usage -> hooks.onUsage(stream.model, e.usage)
+                        is GatewayEvent.TextDelta -> if (e.text.isNotEmpty()) {
+                            hooks.onText(e.text.length)
+                            onText(e.text)
+                        }
                         is GatewayEvent.Done -> {
+                            finished = true
                             hooks.onDone(stream.model, e)
                             return Outcome.Completed(e)
                         }
@@ -122,6 +145,8 @@ class AiRunner(private val gateway: ModelGateway, private val stepUpModel: Strin
             return Outcome.Failed(GatewayErrorCode.OTHER)
         } finally {
             stream.rest.cancel()
+            // Also on cancellation (client disconnect): the tokens already generated are billed.
+            if (!finished) hooks.onUnfinished(stream.model)
         }
     }
 
