@@ -64,12 +64,24 @@ class QuotaServiceTest {
     }
 
     @Test
-    fun `refund after replays gives back the one action and forgets the reqId`() = runBlocking {
-        quota.reserve(p, "r")
+    fun `refund with no other attempt gives back the action and forgets the reqId`() = runBlocking {
         quota.reserve(p, "r")
         quota.refund(p, "r", "20261026")
         assertEquals(0, store.used(p.uid, "20261026"))
         assertEquals(Reservation.Ok(9), quota.reserve(p, "r"))
+    }
+
+    @Test
+    fun `refund of the counted attempt after a duplicate was admitted keeps the action counted`() = runBlocking {
+        // A is admitted and counted; B replays the same id while A is in flight; A then fails and refunds.
+        assertEquals(Reservation.Ok(9), quota.reserve(p, "x"))
+        assertEquals(Reservation.Duplicate(9), quota.reserve(p, "x"))
+        quota.refund(p, "x", "20261026")
+        assertEquals(1, store.used(p.uid, "20261026"))
+        assertEquals(1, store.usedMonth(p.uid, "202610"))
+        // The id's attempts stay recorded, so the cap still holds.
+        repeat(MAX_ATTEMPTS_PER_REQ_ID - 2) { assertEquals(Reservation.Duplicate(9), quota.reserve(p, "x")) }
+        assertEquals(Reservation.Ok(8), quota.reserve(p, "x"))
     }
 
     @Test

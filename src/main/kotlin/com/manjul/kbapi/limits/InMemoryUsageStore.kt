@@ -38,8 +38,7 @@ class InMemoryUsageStore : UsageStore {
 
     override suspend fun refund(uid: String, day: String, month: String, reqId: String) = lock(uid).withLock {
         val rec = days["${uid}_$day"] ?: return@withLock
-        if (reqId !in rec.reqIds) return@withLock
-        rec.reqIds = rec.reqIds.filter { it != reqId }
+        rec.reqIds = refundedReqIds(rec.reqIds, reqId) ?: return@withLock
         rec.count = (rec.count - 1).coerceAtLeast(0)
         months.computeIfPresent("${uid}_$month") { _, c -> (c - 1).coerceAtLeast(0) }
         Unit

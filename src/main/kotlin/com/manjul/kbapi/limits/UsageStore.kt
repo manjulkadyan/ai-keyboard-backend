@@ -24,7 +24,11 @@ sealed interface Reservation {
 interface UsageStore {
     suspend fun reserve(uid: String, day: String, month: String, reqId: String, dailyLimit: Int, monthlyLimit: Int?): Reservation
 
-    /** Undoes a reservation. A [reqId] not recorded for [day] is a no-op. */
+    /**
+     * Undoes the counted reservation of [reqId] (see [refundedReqIds]). A [reqId] not recorded for [day]
+     * is a no-op, and so is one with a duplicate attempt admitted after it: that attempt is served
+     * under the same count, so giving the action back would let it run for free.
+     */
     suspend fun refund(uid: String, day: String, month: String, reqId: String)
 
     suspend fun used(uid: String, day: String): Int
@@ -88,3 +92,11 @@ internal fun reqIdsAfter(reqIds: List<String>, reqId: String, r: Reservation): L
     is Reservation.Ok -> reqIds.filter { it != reqId } + reqId
     is Reservation.Exhausted -> reqIds
 }.takeLast(MAX_REQ_IDS)
+
+/**
+ * The request-id list after a refund of [reqId], or null when the refund must not give the action
+ * back: the id is unknown, or more than one attempt is recorded for it. Duplicate attempts never
+ * refund, so a second entry means a retry was admitted under this count and may still be streaming.
+ */
+internal fun refundedReqIds(reqIds: List<String>, reqId: String): List<String>? =
+    if (reqIds.count { it == reqId } == 1) reqIds.filter { it != reqId } else null

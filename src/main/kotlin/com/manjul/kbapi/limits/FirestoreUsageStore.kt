@@ -53,10 +53,11 @@ class FirestoreUsageStore(private val db: Firestore) : UsageStore {
                 val mSnap = tx.get(mRef).get()
                 @Suppress("UNCHECKED_CAST")
                 val reqIds = (dSnap.get("req_ids") as? List<String>).orEmpty()
-                if (reqId in reqIds) {
+                val remaining = refundedReqIds(reqIds, reqId)
+                if (remaining != null) {
                     val dayCount = dSnap.getLong("count")?.toInt() ?: 0
                     val monthCount = mSnap.getLong("count")?.toInt() ?: 0
-                    tx.set(dRef, mapOf("count" to (dayCount - 1).coerceAtLeast(0), "req_ids" to reqIds.filter { it != reqId }), SetOptions.merge())
+                    tx.set(dRef, mapOf("count" to (dayCount - 1).coerceAtLeast(0), "req_ids" to remaining), SetOptions.merge())
                     tx.set(mRef, mapOf("count" to (monthCount - 1).coerceAtLeast(0)), SetOptions.merge())
                 }
                 null
