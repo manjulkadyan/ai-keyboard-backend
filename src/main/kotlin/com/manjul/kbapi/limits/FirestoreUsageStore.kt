@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Firestore usage counters: `usage/{uid}_{yyyymmdd}` (`count`, `req_ids` holding the
- * [MAX_REQ_IDS] most recent) and `usage_m/{uid}_{yyyymm}` (`count`), both updated in one
+ * [MAX_REQ_IDS] most recent entries, one per model call) and `usage_m/{uid}_{yyyymm}` (`count`), both updated in one
  * transaction so concurrent instances cannot over-count.
  */
 class FirestoreUsageStore(private val db: Firestore) : UsageStore {
@@ -31,10 +31,14 @@ class FirestoreUsageStore(private val db: Firestore) : UsageStore {
             val monthCount = mSnap.getLong("count")?.toInt() ?: 0
             @Suppress("UNCHECKED_CAST")
             val reqIds = (dSnap.get("req_ids") as? List<String>).orEmpty()
-            val r = UsageKeys.decide(day, month, dayCount, monthCount, reqId in reqIds, dailyLimit, monthlyLimit)
-            if (r is Reservation.Ok) {
-                tx.set(dRef, mapOf("count" to dayCount + 1, "req_ids" to (reqIds + reqId).takeLast(MAX_REQ_IDS)), SetOptions.merge())
-                tx.set(mRef, mapOf("count" to monthCount + 1), SetOptions.merge())
+            val r = UsageKeys.decide(day, month, dayCount, monthCount, reqIds.count { it == reqId }, dailyLimit, monthlyLimit)
+            when (r) {
+                is Reservation.Ok -> {
+                    tx.set(dRef, mapOf("count" to dayCount + 1, "req_ids" to reqIdsAfter(reqIds, reqId, r)), SetOptions.merge())
+                    tx.set(mRef, mapOf("count" to monthCount + 1), SetOptions.merge())
+                }
+                is Reservation.Duplicate -> tx.set(dRef, mapOf("req_ids" to reqIdsAfter(reqIds, reqId, r)), SetOptions.merge())
+                is Reservation.Exhausted -> Unit
             }
             r
         }.get()
@@ -52,7 +56,7 @@ class FirestoreUsageStore(private val db: Firestore) : UsageStore {
                 if (reqId in reqIds) {
                     val dayCount = dSnap.getLong("count")?.toInt() ?: 0
                     val monthCount = mSnap.getLong("count")?.toInt() ?: 0
-                    tx.set(dRef, mapOf("count" to (dayCount - 1).coerceAtLeast(0), "req_ids" to reqIds - reqId), SetOptions.merge())
+                    tx.set(dRef, mapOf("count" to (dayCount - 1).coerceAtLeast(0), "req_ids" to reqIds.filter { it != reqId }), SetOptions.merge())
                     tx.set(mRef, mapOf("count" to (monthCount - 1).coerceAtLeast(0)), SetOptions.merge())
                 }
                 null

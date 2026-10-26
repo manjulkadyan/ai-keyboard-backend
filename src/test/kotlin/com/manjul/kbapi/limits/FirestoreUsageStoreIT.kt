@@ -28,6 +28,16 @@ class FirestoreUsageStoreIT {
     }
 
     @Test
+    fun `replays of a reqId are capped and a refund forgets every attempt`() = runBlocking {
+        assertEquals(Reservation.Ok(0), store.reserve(uid, "20261026", "202610", "x", 1, null))
+        repeat(MAX_ATTEMPTS_PER_REQ_ID - 1) { assertEquals(Reservation.Duplicate(0), store.reserve(uid, "20261026", "202610", "x", 1, null)) }
+        assertIs<Reservation.Exhausted>(store.reserve(uid, "20261026", "202610", "x", 1, null))
+        store.refund(uid, "20261026", "202610", "x")
+        assertEquals(0, store.used(uid, "20261026"))
+        assertEquals(Reservation.Ok(0), store.reserve(uid, "20261026", "202610", "x", 1, null))
+    }
+
+    @Test
     fun `spend store sums buckets`() = runBlocking {
         val spend = FirestoreSpendStore(db)
         val key = "it-" + UUID.randomUUID()

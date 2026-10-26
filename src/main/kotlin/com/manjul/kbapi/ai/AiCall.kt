@@ -34,7 +34,7 @@ class AiCall(private val call: ApplicationCall, private val limits: Limits, prom
 
     /**
      * Gives the action back when nothing reached the client. A retry of an already counted
-     * `client_req_id` refunds nothing, so it cannot undo the original action.
+     * `client_req_id` refunds nothing, so it cannot undo the original action (its attempt stays used).
      */
     suspend fun refund(clientReqId: String) {
         val a = admission ?: return

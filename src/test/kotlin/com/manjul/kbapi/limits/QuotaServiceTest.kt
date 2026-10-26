@@ -45,6 +45,34 @@ class QuotaServiceTest {
     }
 
     @Test
+    fun `a reqId buys a bounded number of calls, then counts as a new action`() = runBlocking {
+        assertEquals(Reservation.Ok(9), quota.reserve(p, "same"))
+        repeat(MAX_ATTEMPTS_PER_REQ_ID - 1) { assertEquals(Reservation.Duplicate(9), quota.reserve(p, "same")) }
+        assertEquals(1, store.used(p.uid, "20261026"))
+        assertEquals(Reservation.Ok(8), quota.reserve(p, "same"))
+        assertEquals(2, store.used(p.uid, "20261026"))
+        assertEquals(Reservation.Duplicate(8), quota.reserve(p, "same"))
+    }
+
+    @Test
+    fun `replaying a reqId after the quota is used up stops at the attempt cap`() = runBlocking {
+        quota.reserve(p, "x")
+        repeat(9) { quota.reserve(p, "fill-$it") }
+        repeat(MAX_ATTEMPTS_PER_REQ_ID - 1) { assertEquals(Reservation.Duplicate(0), quota.reserve(p, "x")) }
+        repeat(3) { assertIs<Reservation.Exhausted>(quota.reserve(p, "x")) }
+        assertEquals(10, store.used(p.uid, "20261026"))
+    }
+
+    @Test
+    fun `refund after replays gives back the one action and forgets the reqId`() = runBlocking {
+        quota.reserve(p, "r")
+        quota.reserve(p, "r")
+        quota.refund(p, "r", "20261026")
+        assertEquals(0, store.used(p.uid, "20261026"))
+        assertEquals(Reservation.Ok(9), quota.reserve(p, "r"))
+    }
+
+    @Test
     fun `refund restores the count and an unknown reqId is a no-op`() = runBlocking {
         quota.reserve(p, "a")
         quota.reserve(p, "b")

@@ -4,7 +4,8 @@ info:
   version: 0.1.0
   description: |
     AI Keyboard backend (TRD 5.3). Every response carries X-Request-Id. Request and response text
-    is never logged or stored (TRD 5.4). `client_req_id` makes retries idempotent for quota counting.
+    is never logged or stored (TRD 5.4). `client_req_id` makes retries idempotent for quota counting:
+    one counted action covers up to 3 model calls under the same id; a further call counts as a new action.
 servers:
   - url: http://localhost:8080
 security:

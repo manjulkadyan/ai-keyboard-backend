@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap
 class InMemoryUsageStore : UsageStore {
     private class DayRecord {
         var count = 0
-        val reqIds = LinkedHashSet<String>()
+        var reqIds: List<String> = emptyList()
     }
 
     private val locks = ConcurrentHashMap<String, Mutex>()
@@ -27,11 +27,10 @@ class InMemoryUsageStore : UsageStore {
     ): Reservation = lock(uid).withLock {
         val rec = days.computeIfAbsent("${uid}_$day") { DayRecord() }
         val monthCount = months["${uid}_$month"] ?: 0
-        val r = UsageKeys.decide(day, month, rec.count, monthCount, reqId in rec.reqIds, dailyLimit, monthlyLimit)
+        val r = UsageKeys.decide(day, month, rec.count, monthCount, rec.reqIds.count { it == reqId }, dailyLimit, monthlyLimit)
+        rec.reqIds = reqIdsAfter(rec.reqIds, reqId, r)
         if (r is Reservation.Ok) {
             rec.count++
-            rec.reqIds += reqId
-            while (rec.reqIds.size > MAX_REQ_IDS) rec.reqIds.remove(rec.reqIds.first())
             months["${uid}_$month"] = monthCount + 1
         }
         r
@@ -39,7 +38,8 @@ class InMemoryUsageStore : UsageStore {
 
     override suspend fun refund(uid: String, day: String, month: String, reqId: String) = lock(uid).withLock {
         val rec = days["${uid}_$day"] ?: return@withLock
-        if (!rec.reqIds.remove(reqId)) return@withLock
+        if (reqId !in rec.reqIds) return@withLock
+        rec.reqIds = rec.reqIds.filter { it != reqId }
         rec.count = (rec.count - 1).coerceAtLeast(0)
         months.computeIfPresent("${uid}_$month") { _, c -> (c - 1).coerceAtLeast(0) }
         Unit

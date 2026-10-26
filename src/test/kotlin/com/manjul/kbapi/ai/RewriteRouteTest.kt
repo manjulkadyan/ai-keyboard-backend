@@ -1,5 +1,6 @@
 package com.manjul.kbapi.ai
 
+import com.manjul.kbapi.limits.MAX_ATTEMPTS_PER_REQ_ID
 import com.manjul.kbapi.testing.authed
 import com.manjul.kbapi.testing.aiServices
 import com.manjul.kbapi.testing.contractCall
@@ -225,6 +226,24 @@ class RewriteRouteTest {
             val (_, body) = contractCall(HttpMethod.Post, "/v1/rewrite", rewriteBody(reqId = "same")) { authed() }
             assertEquals(9, parseSse(body).last().data["quota_left"]!!.jsonPrimitive.int)
             assertEquals(9, quotaLeft())
+        }
+    }
+
+    @Test
+    fun `replaying a client_req_id cannot buy model calls past the quota`() {
+        val gateway = FakeGateway(listOf(text("ok"), done()))
+        testApp(aiServices(gateway, testConfig().copy(freeDaily = 1))) {
+            repeat(MAX_ATTEMPTS_PER_REQ_ID) {
+                val (r, _) = contractCall(HttpMethod.Post, "/v1/rewrite", rewriteBody(reqId = "replay")) { authed() }
+                assertEquals(HttpStatusCode.OK, r.status)
+            }
+            repeat(3) {
+                val (r, body) = contractCall(HttpMethod.Post, "/v1/rewrite", rewriteBody(reqId = "replay")) { authed() }
+                assertEquals(HttpStatusCode.PaymentRequired, r.status)
+                assertEquals("quota", err(body))
+            }
+            assertEquals(MAX_ATTEMPTS_PER_REQ_ID, gateway.requests.size)
+            assertEquals(0, quotaLeft())
         }
     }
 
