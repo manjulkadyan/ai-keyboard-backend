@@ -5,6 +5,8 @@ import com.manjul.kbapi.auth.AuthChain
 import com.manjul.kbapi.auth.FirebaseIdTokenVerifier
 import com.manjul.kbapi.auth.IdTokenVerifier
 import com.manjul.kbapi.auth.JwksAppCheckVerifier
+import com.google.cloud.firestore.FirestoreOptions
+import com.manjul.kbapi.limits.Limits
 import com.manjul.kbapi.routes.healthRoutes
 import com.manjul.kbapi.routes.quotaRoutes
 import io.ktor.serialization.kotlinx.json.json
@@ -19,23 +21,37 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.time.Clock
 
-/** Everything the module needs; tests swap verifiers and the clock. */
+/** Everything the module needs; tests swap verifiers, the clock and the limit stores. */
 data class Services(
     val config: Config,
     val appCheck: AppCheckVerifier,
     val idTokens: IdTokenVerifier,
     val clock: Clock = Clock.systemUTC(),
+    val limits: Limits = Limits.inMemory(config, clock),
 ) {
     companion object {
-        fun production(config: Config, clock: Clock = Clock.systemUTC()): Services = when (config.authMode) {
-            AuthMode.FIREBASE -> Services(
-                config = config,
-                appCheck = JwksAppCheckVerifier(JwksAppCheckVerifier.DEFAULT_JWKS_URL, config.firebaseProjectNumber, clock),
-                idTokens = FirebaseIdTokenVerifier.create(config.firebaseProjectId),
-                clock = clock,
-            )
-            // Dev mode never consults the verifiers; reject everything to be safe.
-            AuthMode.DEV -> Services(config, AppCheckVerifier { false }, IdTokenVerifier { null }, clock)
+        /**
+         * Limit stores are Firestore when [gcpProject] (`GOOGLE_CLOUD_PROJECT`) is set, else in-memory
+         * (single instance, local runs only).
+         */
+        fun production(config: Config, clock: Clock = Clock.systemUTC(), gcpProject: String? = null): Services {
+            val limits = if (gcpProject.isNullOrBlank()) {
+                Limits.inMemory(config, clock)
+            } else {
+                val db = FirestoreOptions.getDefaultInstance().toBuilder().setProjectId(gcpProject).build().service
+                Limits.firestore(config, clock, db)
+            }
+            return when (config.authMode) {
+                AuthMode.FIREBASE -> Services(
+                    config = config,
+                    appCheck = JwksAppCheckVerifier(JwksAppCheckVerifier.DEFAULT_JWKS_URL, config.firebaseProjectNumber, clock),
+                    idTokens = FirebaseIdTokenVerifier.create(config.firebaseProjectId),
+                    clock = clock,
+                    limits = limits,
+                )
+                // Dev mode never consults the verifiers; reject everything to be safe.
+                AuthMode.DEV -> Services(config, AppCheckVerifier { false }, IdTokenVerifier { null }, clock, limits)
+            }
         }
     }
 }
@@ -67,8 +83,12 @@ fun Application.kbApi(services: Services, extraRoutes: Route.() -> Unit = {}) {
 fun main() {
     val config = Config.fromEnv(System.getenv())
     val log = LoggerFactory.getLogger("kbapi")
-    log.info("starting kb-api auth_mode={} ai_enabled={}", config.authMode, config.aiEnabled)
-    val services = Services.production(config)
+    val gcpProject = System.getenv("GOOGLE_CLOUD_PROJECT")?.trim()?.takeIf { it.isNotEmpty() }
+    log.info(
+        "starting kb-api auth_mode={} ai_enabled={} limits_store={}",
+        config.authMode, config.aiEnabled, if (gcpProject == null) "memory" else "firestore",
+    )
+    val services = Services.production(config, gcpProject = gcpProject)
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     embeddedServer(Netty, port = port, host = "0.0.0.0") { kbApi(services) }.start(wait = true)
 }
