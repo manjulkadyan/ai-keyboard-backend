@@ -51,3 +51,13 @@ tasks.test {
     // Tests walk the repo tree (SecretScanTest) from the project directory.
     workingDir = projectDir
 }
+
+// Offline eval harness (backend/evals, TRD §7.1). Calls the real API: needs ANTHROPIC_API_KEY and --yes.
+// ANTHROPIC_API_KEY=… ./gradlew evalRun --args="--prompt rewrite@1 --model claude-haiku-5-5 --judge claude-opus-5-5 --yes"
+tasks.register<JavaExec>("evalRun") {
+    group = "verification"
+    description = "Runs the eval cases for one prompt against one model and writes a report to evals/results/."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.manjul.kbapi.evals.EvalRunnerKt")
+    workingDir = projectDir
+}
