@@ -56,7 +56,9 @@ paths:
         "200":
           description: |
             Single mode: `text/event-stream` with `event: delta` (`{"text": "..."}`) frames and a final
-            `event: done` (`{"quota_left": n, "trimmed": bool}`). Multi-tone (`modes` set): JSON `{variants}`.
+            `event: done` (`{"quota_left": n, "trimmed": bool, "prompt": "rewrite@1"}`). Once streaming has
+            started, a failure is `event: error` (`{"error": "refused"|"overloaded"|"internal"}`) instead of `done`;
+            the action stays counted. Multi-tone (`modes` set): JSON `{variants, quota_left, prompt}`, one action.
           headers:
             X-Request-Id: { $ref: "#/components/headers/XRequestId" }
           content:
@@ -83,8 +85,11 @@ paths:
       responses:
         "200":
           description: |
-            `text/event-stream`: `event: delta` frames (`{"field": "polished"|"translation", "text": "..."}`) and a
-            final `event: done` (`{"polished", "translation", "source_lang_detected", "quota_left"}`).
+            `text/event-stream`: `event: delta` frames (`{"text": "..."}`) carrying the model's raw JSON text
+            (`{"polished", "translation", "source_lang_detected"}`) as it streams, then a final `event: done`
+            (`{"polished", "translation", "source_lang_detected", "quota_left", "prompt": "polish_translate@1"}`).
+            Unparseable model JSON, or a failure once streaming has started, is `event: error`
+            (`{"error": "refused"|"overloaded"|"internal"}`).
           headers:
             X-Request-Id: { $ref: "#/components/headers/XRequestId" }
           content:
@@ -188,9 +193,16 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Paused:
-      description: "`ai_paused`: kill switch or spend breaker."
+      description: |
+        `ai_paused`: kill switch or spend breaker (the client hides AI for 1 h). `overloaded`: the model
+        provider is rate-limited or overloaded before any text was sent; the action is refunded, retry after
+        `Retry-After` seconds.
       headers:
         X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+        Retry-After:
+          required: false
+          description: Seconds until a retry may succeed (`overloaded` only).
+          schema: { type: integer, minimum: 0 }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -209,7 +221,7 @@ components:
       properties:
         error:
           type: string
-          enum: [too_long, bad_request, app_check, auth, quota, rate_limited, refused, ai_paused, internal, not_found, method_not_allowed]
+          enum: [too_long, bad_request, app_check, auth, quota, rate_limited, refused, ai_paused, overloaded, internal, not_found, method_not_allowed]
         resets_at: { type: string, format: date-time }
         retry_after: { type: integer, minimum: 0 }
 
@@ -239,8 +251,8 @@ components:
           description: BCP-47 target; required when mode is translate.
         modes:
           type: array
-          description: Multi-tone request; the response is JSON `{variants}` instead of a stream.
-          minItems: 1
+          description: Multi-tone request (2 or 3 distinct modes); the response is JSON `{variants}` instead of a stream.
+          minItems: 2
           maxItems: 3
           items: { $ref: "#/components/schemas/RewriteMode" }
         locale: { type: string, minLength: 2, maxLength: 35 }
@@ -249,7 +261,7 @@ components:
 
     RewriteVariants:
       type: object
-      required: [variants]
+      required: [variants, quota_left, prompt]
       properties:
         variants:
           type: array
@@ -260,6 +272,7 @@ components:
               mode: { $ref: "#/components/schemas/RewriteMode" }
               text: { type: string }
         quota_left: { type: integer, minimum: 0 }
+        prompt: { type: string, description: "`multi_tone@1`." }
 
     PolishRequest:
       type: object
@@ -283,8 +296,10 @@ components:
           type: string
           description: "`<id>@<version>`, for example `rewrite@1`."
           pattern: "^[a-z_]+@[0-9]+$"
-        reason: { type: string, minLength: 1, maxLength: 64 }
+        reason: { type: string, enum: [offensive, wrong, unsafe, other] }
         include_text: { type: boolean }
         text:
           type: string
-          description: Sent only when the user ticked "include the text".
+          description: |
+            Sent only when the user ticked "include the text". Ignored when `include_text` is false;
+            stored capped at 4,000 characters.

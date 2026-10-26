@@ -74,9 +74,15 @@ class OpenApiContractTest {
         )
         assertTrue(validate("/v1/polish", """{"transcript":"hi","target_lang":"es","script":"KLINGON","client_req_id":"r1"}""").hasErrors())
         assertTrue(
-            !validate(
+            validate(
                 "/v1/ai/report",
                 """{"client_req_id":"r1","prompt_id":"rewrite@1","reason":"harmful","include_text":false}""",
+            ).hasErrors(),
+        )
+        assertTrue(
+            !validate(
+                "/v1/ai/report",
+                """{"client_req_id":"r1","prompt_id":"rewrite@1","reason":"unsafe","include_text":false}""",
             ).hasErrors(),
         )
     }

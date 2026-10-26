@@ -41,6 +41,11 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// The prompt files live in the repo's prompts/ directory (TRD §4.4.3) and ship on the classpath under /prompts.
+tasks.processResources {
+    from("prompts") { into("prompts") }
+}
+
 tasks.test {
     useJUnitPlatform()
     // Tests walk the repo tree (SecretScanTest) from the project directory.

@@ -53,6 +53,14 @@ object Errors {
     )
     fun refused() = ApiError(UnavailableForLegalReasons, "refused")
     fun aiPaused() = ApiError(HttpStatusCode.ServiceUnavailable, "ai_paused")
+
+    /** Upstream rate limit or overload before any text was sent; the action is refunded. */
+    fun overloaded(retryAfterSeconds: Long = 5) = ApiError(
+        HttpStatusCode.ServiceUnavailable,
+        "overloaded",
+        mapOf("retry_after" to JsonPrimitive(retryAfterSeconds)),
+        mapOf("Retry-After" to retryAfterSeconds.toString()),
+    )
     fun internal() = ApiError(HttpStatusCode.InternalServerError, "internal")
     fun notFound() = ApiError(HttpStatusCode.NotFound, "not_found")
     fun methodNotAllowed() = ApiError(HttpStatusCode.MethodNotAllowed, "method_not_allowed")

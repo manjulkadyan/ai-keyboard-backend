@@ -2,6 +2,9 @@ package com.manjul.kbapi
 
 enum class AuthMode { FIREBASE, DEV }
 
+/** The model provider: the Anthropic API, or canned replies for local runs (`GATEWAY=fake`, dev auth only). */
+enum class GatewayMode { ANTHROPIC, FAKE }
+
 /**
  * Service configuration, read once at startup from the environment.
  * [anthropicApiKey] comes from Secret Manager (mounted as env) in prod and is never logged:
@@ -22,19 +25,21 @@ data class Config(
     val hourlySpendLimitUsd: Double = 20.0,
     val aiEnabled: Boolean = true,
     val maxInputChars: Int = 4000,
+    val gateway: GatewayMode = GatewayMode.ANTHROPIC,
 ) {
     override fun toString(): String =
         "Config(authMode=$authMode, firebaseProjectId=$firebaseProjectId, firebaseProjectNumber=$firebaseProjectNumber, " +
             "anthropicApiKey=${if (anthropicApiKey == null) "unset" else "set"}, rewriteModel=$rewriteModel, " +
             "stepUpModel=$stepUpModel, freeDaily=$freeDaily, proDaily=$proDaily, proMonthly=$proMonthly, " +
             "uidPerMinute=$uidPerMinute, ipPerMinute=$ipPerMinute, hourlySpendLimitUsd=$hourlySpendLimitUsd, " +
-            "aiEnabled=$aiEnabled, maxInputChars=$maxInputChars)"
+            "aiEnabled=$aiEnabled, maxInputChars=$maxInputChars, gateway=$gateway)"
 
     companion object {
         /**
          * Reads the config. Throws [IllegalStateException] (message names the variable, never a value) when:
          * - `AUTH_MODE=dev` and `K_SERVICE` is set, i.e. on Cloud Run (decision 6);
          * - `AUTH_MODE` is unknown;
+         * - `GATEWAY` is unknown, or `GATEWAY=fake` without `AUTH_MODE=dev`;
          * - Firebase mode lacks `FIREBASE_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`) or `FIREBASE_PROJECT_NUMBER`.
          */
         fun fromEnv(env: Map<String, String>): Config {
@@ -58,6 +63,12 @@ data class Config(
             if (mode == AuthMode.DEV && str("K_SERVICE") != null) {
                 error("AUTH_MODE=dev is refused on Cloud Run (K_SERVICE is set)")
             }
+            val gateway = when (str("GATEWAY")?.lowercase()) {
+                null, "anthropic" -> GatewayMode.ANTHROPIC
+                "fake" -> GatewayMode.FAKE
+                else -> error("GATEWAY must be anthropic or fake")
+            }
+            if (gateway == GatewayMode.FAKE && mode != AuthMode.DEV) error("GATEWAY=fake needs AUTH_MODE=dev")
             val projectId = str("FIREBASE_PROJECT_ID") ?: str("GOOGLE_CLOUD_PROJECT")
             val projectNumber = str("FIREBASE_PROJECT_NUMBER")
             if (mode == AuthMode.FIREBASE) {
@@ -80,6 +91,7 @@ data class Config(
                 hourlySpendLimitUsd = double("HOURLY_SPEND_LIMIT_USD", defaults.hourlySpendLimitUsd),
                 aiEnabled = bool("AI_ENABLED", defaults.aiEnabled),
                 maxInputChars = int("MAX_INPUT_CHARS", defaults.maxInputChars),
+                gateway = gateway,
             )
         }
     }

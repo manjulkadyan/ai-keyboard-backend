@@ -3,7 +3,14 @@ package com.manjul.kbapi
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import com.manjul.kbapi.ai.FakeGateway
+import com.manjul.kbapi.ai.GatewayErrorCode
+import com.manjul.kbapi.ai.ModelGateway
 import com.manjul.kbapi.auth.Principal
+import com.manjul.kbapi.testing.aiServices
+import com.manjul.kbapi.testing.polishBody
+import com.manjul.kbapi.testing.rewriteBody
+import com.manjul.kbapi.testing.text
 import com.manjul.kbapi.testing.TestKeys
 import com.manjul.kbapi.testing.authed
 import com.manjul.kbapi.testing.testApp
@@ -11,9 +18,11 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -119,5 +128,72 @@ class LogRedactionTest {
         assertTrue(appender.list.none { it.formattedMessage.contains("plain-uid-value") })
         assertTrue(appender.list.none { it.formattedMessage.contains(TestKeys.idToken("plain-uid-value").take(40)) })
         assertAccessFields(200, Principal.of("plain-uid-value").uidHash)
+    }
+
+    private suspend fun io.ktor.server.testing.ApplicationTestBuilder.postAi(path: String, body: String): Pair<Int, String> {
+        val response = client.post(path) {
+            authed("log-uid")
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        val text = response.bodyAsText()
+        assertFalse(text.contains(secret), "response echoed input: $text")
+        return response.status.value to text
+    }
+
+    @Test
+    fun `rewrite upstream error before the first delta logs no text`() =
+        testApp(aiServices(FakeGateway(listOf(text(secret)), failAt = 0, error = GatewayErrorCode.OVERLOADED))) {
+            val (status, _) = postAi("/v1/rewrite", rewriteBody(text = secret))
+            assertEquals(503, status)
+            assertNoSecretAnywhere()
+            assertAccessFields(503, Principal.of("log-uid").uidHash)
+            val fields = Json.parseToJsonElement(accessLines().last().formattedMessage).jsonObject
+            assertEquals("rewrite@1", fields["prompt_id"]?.jsonPrimitive?.content)
+            assertEquals("claude-haiku-5-5", fields["model"]?.jsonPrimitive?.content)
+        }
+
+    @Test
+    fun `rewrite error after the first delta logs no text`() =
+        testApp(aiServices(FakeGateway(listOf(text("ok"), text(secret)), failAt = 1, error = GatewayErrorCode.OTHER))) {
+            val (status, body) = client.post("/v1/rewrite") {
+                authed("log-uid")
+                contentType(ContentType.Application.Json)
+                setBody(rewriteBody(text = secret))
+            }.let { it.status.value to it.bodyAsText() }
+            assertEquals(200, status)
+            assertTrue(body.contains("event: error"))
+            assertFalse(body.contains(secret))
+            assertNoSecretAnywhere()
+        }
+
+    @Test
+    fun `an SDK exception echoing the prompt is mapped and dropped`() {
+        val echoing = ModelGateway { req -> flow { throw IllegalStateException("upstream said: ${req.user}") } }
+        testApp(aiServices(echoing)) {
+            val (status, body) = postAi("/v1/rewrite", rewriteBody(text = secret))
+            assertEquals(500, status)
+            assertEquals("internal", Json.parseToJsonElement(body).jsonObject["error"]!!.jsonPrimitive.content)
+            val (polishStatus, _) = postAi("/v1/polish", polishBody(transcript = secret))
+            assertEquals(500, polishStatus)
+            assertNoSecretAnywhere()
+        }
+    }
+
+    @Test
+    fun `polish error paths log no text`() {
+        testApp(aiServices(FakeGateway(listOf(text("{\"polished\":\"Hel"), text("x")), failAt = 1, error = GatewayErrorCode.OVERLOADED))) {
+            postAi("/v1/polish", polishBody(transcript = secret, reqId = "a"))
+            assertNoSecretAnywhere()
+        }
+        testApp(aiServices(FakeGateway(listOf(text("not json"), com.manjul.kbapi.testing.done())))) {
+            postAi("/v1/polish", polishBody(transcript = secret, reqId = "b"))
+            assertNoSecretAnywhere()
+        }
+        testApp(aiServices(FakeGateway(emptyList(), failAt = 0, error = GatewayErrorCode.RATE_LIMITED))) {
+            val (status, _) = postAi("/v1/polish", polishBody(transcript = secret, reqId = "c"))
+            assertEquals(503, status)
+            assertNoSecretAnywhere()
+        }
     }
 }

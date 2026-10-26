@@ -6,7 +6,22 @@ import com.manjul.kbapi.auth.FirebaseIdTokenVerifier
 import com.manjul.kbapi.auth.IdTokenVerifier
 import com.manjul.kbapi.auth.JwksAppCheckVerifier
 import com.google.cloud.firestore.FirestoreOptions
+import com.anthropic.client.okhttp.AnthropicOkHttpClient
+import com.manjul.kbapi.ai.AiRunner
+import com.manjul.kbapi.ai.AnthropicGateway
+import com.manjul.kbapi.ai.FakeGateway
+import com.manjul.kbapi.ai.ModelGateway
+import com.manjul.kbapi.ai.PolishService
+import com.manjul.kbapi.ai.PromptRegistry
+import com.manjul.kbapi.ai.RewriteService
+import com.manjul.kbapi.ai.UnavailableGateway
 import com.manjul.kbapi.limits.Limits
+import com.manjul.kbapi.report.FirestoreReportStore
+import com.manjul.kbapi.report.InMemoryReportStore
+import com.manjul.kbapi.report.ReportStore
+import com.manjul.kbapi.routes.polishRoutes
+import com.manjul.kbapi.routes.reportRoutes
+import com.manjul.kbapi.routes.rewriteRoutes
 import com.manjul.kbapi.routes.healthRoutes
 import com.manjul.kbapi.routes.quotaRoutes
 import io.ktor.serialization.kotlinx.json.json
@@ -21,13 +36,16 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.time.Clock
 
-/** Everything the module needs; tests swap verifiers, the clock and the limit stores. */
+/** Everything the module needs; tests swap verifiers, the clock, the limit stores and the model gateway. */
 data class Services(
     val config: Config,
     val appCheck: AppCheckVerifier,
     val idTokens: IdTokenVerifier,
     val clock: Clock = Clock.systemUTC(),
     val limits: Limits = Limits.inMemory(config, clock),
+    val gateway: ModelGateway = UnavailableGateway,
+    val prompts: PromptRegistry = PromptRegistry(),
+    val reports: ReportStore = InMemoryReportStore(),
 ) {
     companion object {
         /**
@@ -35,12 +53,14 @@ data class Services(
          * (single instance, local runs only).
          */
         fun production(config: Config, clock: Clock = Clock.systemUTC(), gcpProject: String? = null): Services {
-            val limits = if (gcpProject.isNullOrBlank()) {
-                Limits.inMemory(config, clock)
+            val db = if (gcpProject.isNullOrBlank()) {
+                null
             } else {
-                val db = FirestoreOptions.getDefaultInstance().toBuilder().setProjectId(gcpProject).build().service
-                Limits.firestore(config, clock, db)
+                FirestoreOptions.getDefaultInstance().toBuilder().setProjectId(gcpProject).build().service
             }
+            val limits = db?.let { Limits.firestore(config, clock, it) } ?: Limits.inMemory(config, clock)
+            val reports = db?.let { FirestoreReportStore(it) } ?: InMemoryReportStore()
+            val gateway = gateway(config)
             return when (config.authMode) {
                 AuthMode.FIREBASE -> Services(
                     config = config,
@@ -48,12 +68,24 @@ data class Services(
                     idTokens = FirebaseIdTokenVerifier.create(config.firebaseProjectId),
                     clock = clock,
                     limits = limits,
+                    gateway = gateway,
+                    reports = reports,
                 )
                 // Dev mode never consults the verifiers; reject everything to be safe.
-                AuthMode.DEV -> Services(config, AppCheckVerifier { false }, IdTokenVerifier { null }, clock, limits)
+                AuthMode.DEV -> Services(
+                    config, AppCheckVerifier { false }, IdTokenVerifier { null }, clock, limits,
+                    gateway = gateway, reports = reports,
+                )
             }
         }
     }
+}
+
+/** The key is read from the environment only (Secret Manager in prod); without it AI calls fail closed. */
+private fun gateway(config: Config): ModelGateway = when {
+    config.gateway == GatewayMode.FAKE -> FakeGateway.demo()
+    config.anthropicApiKey == null -> UnavailableGateway
+    else -> AnthropicGateway(AnthropicOkHttpClient.builder().apiKey(config.anthropicApiKey).build())
 }
 
 val KbJson = Json {
@@ -76,6 +108,10 @@ fun Application.kbApi(services: Services, extraRoutes: Route.() -> Unit = {}) {
     routing {
         healthRoutes()
         quotaRoutes(services)
+        val runner = AiRunner(services.gateway, services.config.stepUpModel)
+        rewriteRoutes(RewriteService(services.config, services.prompts, services.limits, runner))
+        polishRoutes(PolishService(services.config, services.prompts, services.limits, runner))
+        reportRoutes(services)
         extraRoutes()
     }
 }
@@ -85,8 +121,9 @@ fun main() {
     val log = LoggerFactory.getLogger("kbapi")
     val gcpProject = System.getenv("GOOGLE_CLOUD_PROJECT")?.trim()?.takeIf { it.isNotEmpty() }
     log.info(
-        "starting kb-api auth_mode={} ai_enabled={} limits_store={}",
-        config.authMode, config.aiEnabled, if (gcpProject == null) "memory" else "firestore",
+        "starting kb-api auth_mode={} ai_enabled={} limits_store={} gateway={} anthropic_key={}",
+        config.authMode, config.aiEnabled, if (gcpProject == null) "memory" else "firestore", config.gateway,
+        if (config.anthropicApiKey == null) "unset" else "set",
     )
     val services = Services.production(config, gcpProject = gcpProject)
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
