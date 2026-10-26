@@ -30,7 +30,7 @@ class PolishService(
 
         coroutineScope {
             val opened = try {
-                runner.open(this, req, ai)
+                runner.openStreaming(this, req, ai)
             } catch (e: Throwable) {
                 ai.refund(body.clientReqId)
                 throw e

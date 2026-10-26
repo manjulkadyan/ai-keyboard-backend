@@ -90,6 +90,16 @@ class AiRunner(private val gateway: ModelGateway, private val stepUpModel: Strin
         throw ApiException(Errors.refused())
     }
 
+    /**
+     * [open] for a streamed endpoint: a call that ended without any text (an empty `end_turn`, or thinking
+     * that used up `max_tokens`) delivered nothing, so it is a pre-stream 500 `internal` and the caller refunds.
+     */
+    suspend fun openStreaming(scope: CoroutineScope, req: GatewayRequest, hooks: CallHooks): Opened.Streaming =
+        when (val opened = open(scope, req, hooks)) {
+            is Opened.Streaming -> opened
+            is Opened.Empty -> fail(hooks, GatewayErrorCode.OTHER)
+        }
+
     /** Relays the rest of a stream to [onText]. Never throws for upstream failures. */
     suspend fun drain(stream: Opened.Streaming, hooks: CallHooks, onText: suspend (String) -> Unit): Outcome {
         try {

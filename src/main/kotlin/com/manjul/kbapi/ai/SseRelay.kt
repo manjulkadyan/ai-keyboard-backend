@@ -29,7 +29,7 @@ object SseRelay {
      */
     suspend fun respond(
         call: ApplicationCall,
-        opened: Opened,
+        opened: Opened.Streaming,
         runner: AiRunner,
         hooks: CallHooks,
         finish: (text: String, done: GatewayEvent.Done) -> JsonObject?,
@@ -38,17 +38,11 @@ object SseRelay {
         call.response.header("X-Accel-Buffering", "no")
         // The writer may run after respondBytesWriter returns, so the stream is closed by drain(), not here.
         call.respondBytesWriter(ContentType.Text.EventStream, HttpStatusCode.OK) {
-            val full = StringBuilder()
-            val last: Outcome = when (opened) {
-                is Opened.Empty -> Outcome.Completed(opened.done)
-                is Opened.Streaming -> {
-                    full.append(opened.first)
-                    send(delta(opened.first))
-                    runner.drain(opened, hooks) { text ->
-                        full.append(text)
-                        send(delta(text))
-                    }
-                }
+            val full = StringBuilder(opened.first)
+            send(delta(opened.first))
+            val last = runner.drain(opened, hooks) { text ->
+                full.append(text)
+                send(delta(text))
             }
             when (last) {
                 is Outcome.Failed -> send(error(AiRunner.streamErrorCode(last.code)))

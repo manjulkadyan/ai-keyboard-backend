@@ -94,6 +94,18 @@ class PolishRouteTest {
     }
 
     @Test
+    fun `a call that ends with no text is 500 internal and refunds`() {
+        for (stop in listOf("end_turn", "max_tokens")) {
+            testApp(aiServices(FakeGateway(listOf(done(stop))))) {
+                val (response, body) = contractCall(HttpMethod.Post, "/v1/polish", polishBody()) { authed() }
+                assertEquals(HttpStatusCode.InternalServerError, response.status)
+                assertEquals("internal", Json.parseToJsonElement(body).jsonObject["error"]!!.jsonPrimitive.content)
+                assertEquals(10, quotaLeft())
+            }
+        }
+    }
+
+    @Test
     fun `upstream error before the first delta is 503 and refunds`() {
         testApp(aiServices(FakeGateway(emptyList(), failAt = 0, error = GatewayErrorCode.OVERLOADED))) {
             val (response, _) = contractCall(HttpMethod.Post, "/v1/polish", polishBody()) { authed() }

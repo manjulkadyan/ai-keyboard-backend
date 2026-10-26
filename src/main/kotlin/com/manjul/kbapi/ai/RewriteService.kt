@@ -56,7 +56,7 @@ class RewriteService(
                 call.respond(RewriteVariants(variants, admission.leftToday, prompt.ref))
             } else {
                 val opened = try {
-                    runner.open(this, req, ai)
+                    runner.openStreaming(this, req, ai)
                 } catch (e: Throwable) {
                     ai.refund(body.clientReqId)
                     throw e

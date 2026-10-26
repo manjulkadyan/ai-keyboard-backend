@@ -97,6 +97,20 @@ class RewriteRouteTest {
     }
 
     @Test
+    fun `a call that ends with no text is 500 internal and refunds`() {
+        for (stop in listOf("end_turn", "max_tokens")) {
+            for (extra in listOf("", ""","modes":["formal","friendly"]""")) {
+                testApp(aiServices(FakeGateway(listOf(done(stop))))) {
+                    val (response, body) = contractCall(HttpMethod.Post, "/v1/rewrite", rewriteBody(extra = extra)) { authed() }
+                    assertEquals(HttpStatusCode.InternalServerError, response.status)
+                    assertEquals("internal", err(body))
+                    assertEquals(10, quotaLeft())
+                }
+            }
+        }
+    }
+
+    @Test
     fun `error after the first delta is an error event and keeps the quota`() {
         val gateway = FakeGateway(listOf(text("Hel"), text("lo"), done()), failAt = 1, error = GatewayErrorCode.OVERLOADED)
         testApp(aiServices(gateway)) {
