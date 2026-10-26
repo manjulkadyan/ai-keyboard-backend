@@ -1,6 +1,6 @@
 # kb-api
 
-Backend for the AI Keyboard (TRD §5): Kotlin, Ktor 3, Netty. It has the auth chain, quota and spend limits, the error
+Backend for the AI Keyboard Android app: Kotlin, Ktor 3, Netty, JDK 17. It has the auth chain, quota and spend limits, the error
 model, a redacted access log, the OpenAPI contract and the AI endpoints `/v1/rewrite`, `/v1/polish` (SSE) and
 `/v1/ai/report`.
 
@@ -17,7 +17,41 @@ curl -N -H 'X-Dev-Uid: u1' -H 'Content-Type: application/json' \
   -d '{"mode":"fix","locale":"en","text":"helo","client_req_id":"r1"}' localhost:8080/v1/rewrite
 ```
 
-In the sandbox, prefix Gradle with the truststore `JAVA_TOOL_OPTIONS` (see the Android repo's plan).
+Behind a TLS-intercepting proxy, point Gradle at its truststore with `JAVA_TOOL_OPTIONS`.
+
+## Tests
+
+```sh
+./gradlew test
+```
+
+This runs the unit and route tests, the OpenAPI contract test, the log-redaction test and `SecretScanTest`. No
+network or Anthropic key is needed; AI routes use a fake gateway.
+
+`FirestoreUsageStoreIT` runs only when `FIRESTORE_EMULATOR_HOST` is set:
+
+```sh
+gcloud emulators firestore start --host-port=localhost:8081 &
+FIRESTORE_EMULATOR_HOST=localhost:8081 ./gradlew test
+```
+
+Prompt quality is measured separately by the offline eval harness (`./gradlew evalRun`). It calls the real API and
+costs money, so it never runs in `test`. See [`evals/README.md`](evals/README.md).
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `src/main/kotlin/com/manjul/kbapi/` | `Main.kt` (wiring), `Config.kt` (env), `Errors.kt`, `Logging.kt`, `RequestId.kt` |
+| `…/ai/` | Anthropic and fake gateways, prompt registry, rewrite/polish services, SSE relay |
+| `…/auth/` | App Check and Firebase ID token verification, dev auth |
+| `…/limits/` | Tiers, daily/monthly quota, per-uid and per-IP rate limits, hourly spend breaker |
+| `…/report/` | Storage for `/v1/ai/report` |
+| `…/routes/` | HTTP routes |
+| `…/evals/` | Offline eval runner and graders |
+| `prompts/` | Versioned system prompts, packaged as resources |
+| `evals/` | Eval cases and docs |
+| `deploy/` | Cloud Run config and deploy steps |
 
 ## Environment
 
@@ -55,10 +89,11 @@ exceptions are mapped to an error code and their messages dropped.
 
 ## Privacy
 
-Request and response text is never logged, stored or echoed (TRD §5.4, PRD PC-10). The access log is one JSON line
+Request and response text is never logged, stored or echoed. The access log is one JSON line
 per call built from the `LogField` allow-list; exceptions are logged by class name only. `SecretScanTest` fails the
 build on vendor keys or private keys anywhere in the tree.
 
 ## Deploy
 
-See `deploy/README.md` (not run in Sprint 3).
+Cloud Run, with Firestore, Secret Manager and an external HTTPS load balancer. See [`deploy/README.md`](deploy/README.md);
+it has not been deployed yet.
