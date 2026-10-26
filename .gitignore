@@ -1,0 +1,13 @@
+build/
+.gradle/
+.kotlin/
+.idea/
+*.iml
+.env
+.env.*
+# Service-account and other credential key files. Fixtures that must be JSON live under src/**/resources.
+*.json
+!src/**/resources/**/*.json
+!evals/**/*.json
+local.properties
+.DS_Store

@@ -1,0 +1,290 @@
+openapi: 3.0.3
+info:
+  title: kb-api
+  version: 0.1.0
+  description: |
+    AI Keyboard backend (TRD 5.3). Every response carries X-Request-Id. Request and response text
+    is never logged or stored (TRD 5.4). `client_req_id` makes retries idempotent for quota counting.
+servers:
+  - url: http://localhost:8080
+security:
+  - appCheck: []
+    firebaseIdToken: []
+
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      security: []
+      responses:
+        "200":
+          description: Service is up.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+
+  /v1/quota:
+    get:
+      operationId: getQuota
+      responses:
+        "200":
+          description: Remaining AI actions today.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotaStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/Internal" }
+
+  /v1/rewrite:
+    post:
+      operationId: rewrite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RewriteRequest" }
+      responses:
+        "200":
+          description: |
+            Single mode: `text/event-stream` with `event: delta` (`{"text": "..."}`) frames and a final
+            `event: done` (`{"quota_left": n, "trimmed": bool}`). Multi-tone (`modes` set): JSON `{variants}`.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            text/event-stream:
+              schema: { type: string }
+            application/json:
+              schema: { $ref: "#/components/schemas/RewriteVariants" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/Quota" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "451": { $ref: "#/components/responses/Refused" }
+        "500": { $ref: "#/components/responses/Internal" }
+        "503": { $ref: "#/components/responses/Paused" }
+
+  /v1/polish:
+    post:
+      operationId: polish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PolishRequest" }
+      responses:
+        "200":
+          description: |
+            `text/event-stream`: `event: delta` frames (`{"field": "polished"|"translation", "text": "..."}`) and a
+            final `event: done` (`{"polished", "translation", "source_lang_detected", "quota_left"}`).
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/Quota" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "451": { $ref: "#/components/responses/Refused" }
+        "500": { $ref: "#/components/responses/Internal" }
+        "503": { $ref: "#/components/responses/Paused" }
+
+  /v1/ai/report:
+    post:
+      operationId: reportAiOutput
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReportRequest" }
+      responses:
+        "200":
+          description: Report stored for 90 days.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/Internal" }
+
+components:
+  securitySchemes:
+    appCheck:
+      type: apiKey
+      in: header
+      name: X-Firebase-AppCheck
+      description: Firebase App Check token (Play Integrity provider; debug provider in debug builds).
+    firebaseIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase ID token of the anonymous (or upgraded) user.
+
+  headers:
+    XRequestId:
+      required: true
+      description: Server-generated request id.
+      schema: { type: string }
+    RetryAfter:
+      required: true
+      description: Seconds until a retry may succeed.
+      schema: { type: integer, minimum: 0 }
+
+  responses:
+    BadRequest:
+      description: "`bad_request` (malformed or invalid body; no parser detail) or `too_long`."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: "`app_check` or `auth`."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Quota:
+      description: "`quota`, with `resets_at` (next UTC midnight or month start)."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Error"
+              - type: object
+                required: [resets_at]
+    RateLimited:
+      description: "`rate_limited`."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Refused:
+      description: "`refused`: the model declined the request."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Paused:
+      description: "`ai_paused`: kill switch or spend breaker."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Internal:
+      description: "`internal`."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [too_long, bad_request, app_check, auth, quota, rate_limited, refused, ai_paused, internal, not_found, method_not_allowed]
+        resets_at: { type: string, format: date-time }
+        retry_after: { type: integer, minimum: 0 }
+
+    Tier:
+      type: string
+      enum: [FREE, PRO]
+
+    QuotaStatus:
+      type: object
+      required: [ai_left_today, resets_at, tier]
+      properties:
+        ai_left_today: { type: integer, minimum: 0 }
+        resets_at: { type: string, format: date-time }
+        tier: { $ref: "#/components/schemas/Tier" }
+
+    RewriteMode:
+      type: string
+      enum: [fix, formal, friendly, shorter, longer, emojify, translate]
+
+    RewriteRequest:
+      type: object
+      required: [mode, locale, text, client_req_id]
+      properties:
+        mode: { $ref: "#/components/schemas/RewriteMode" }
+        target_lang:
+          type: string
+          description: BCP-47 target; required when mode is translate.
+        modes:
+          type: array
+          description: Multi-tone request; the response is JSON `{variants}` instead of a stream.
+          minItems: 1
+          maxItems: 3
+          items: { $ref: "#/components/schemas/RewriteMode" }
+        locale: { type: string, minLength: 2, maxLength: 35 }
+        text: { type: string, minLength: 1 }
+        client_req_id: { type: string, minLength: 1, maxLength: 64 }
+
+    RewriteVariants:
+      type: object
+      required: [variants]
+      properties:
+        variants:
+          type: array
+          items:
+            type: object
+            required: [mode, text]
+            properties:
+              mode: { $ref: "#/components/schemas/RewriteMode" }
+              text: { type: string }
+        quota_left: { type: integer, minimum: 0 }
+
+    PolishRequest:
+      type: object
+      required: [transcript, target_lang, client_req_id]
+      properties:
+        transcript: { type: string, minLength: 1 }
+        source_lang: { type: string }
+        target_lang: { type: string }
+        script:
+          type: string
+          enum: [MATCH_INPUT, ROMAN, NATIVE]
+          description: Output script for the polished text (FR-16 AC4). Defaults to MATCH_INPUT.
+        client_req_id: { type: string, minLength: 1, maxLength: 64 }
+
+    ReportRequest:
+      type: object
+      required: [client_req_id, prompt_id, reason, include_text]
+      properties:
+        client_req_id: { type: string, minLength: 1, maxLength: 64 }
+        prompt_id:
+          type: string
+          description: "`<id>@<version>`, for example `rewrite@1`."
+          pattern: "^[a-z_]+@[0-9]+$"
+        reason: { type: string, minLength: 1, maxLength: 64 }
+        include_text: { type: boolean }
+        text:
+          type: string
+          description: Sent only when the user ticked "include the text".
