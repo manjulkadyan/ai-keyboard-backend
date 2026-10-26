@@ -25,7 +25,7 @@ class PolishService(
         validate(body)
         val req = request(config, prompts, body)
         val prompt = prompts.get(PromptRegistry.POLISH)
-        val ai = AiCall(call, limits, prompt, req.model)
+        val ai = AiCall(call, limits, prompt, req.model, config.trustedProxyHops)
         val admission = ai.admit(body.transcript.length, body.clientReqId)
 
         coroutineScope {

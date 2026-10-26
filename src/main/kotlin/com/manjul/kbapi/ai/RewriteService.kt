@@ -41,7 +41,7 @@ class RewriteService(
         val multi = body.modes != null
         val req = if (multi) multiRequest(config, prompts, body) else singleRequest(config, prompts, body)
         val prompt = prompts.get(if (multi) PromptRegistry.MULTI_TONE else PromptRegistry.REWRITE)
-        val ai = AiCall(call, limits, prompt, req.model)
+        val ai = AiCall(call, limits, prompt, req.model, config.trustedProxyHops)
         val admission = ai.admit(body.text.length, body.clientReqId)
 
         coroutineScope {

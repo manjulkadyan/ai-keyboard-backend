@@ -42,12 +42,23 @@ class Preflight(
 }
 
 /**
- * The client IP for the per-IP bucket. Behind Cloud Run's front end the connecting peer is the proxy,
- * so the last `X-Forwarded-For` entry (the one the front end appended) is used. It is never logged.
+ * The client IP for the per-IP bucket, never logged. See [clientIpFrom]; falls back to the connecting peer.
  */
-fun ApplicationCall.clientIp(): String =
-    request.headers["X-Forwarded-For"]?.split(',')?.map { it.trim() }?.lastOrNull { it.isNotEmpty() }
-        ?: request.origin.remoteHost
+fun ApplicationCall.clientIp(trustedHops: Int): String =
+    clientIpFrom(request.headers["X-Forwarded-For"], trustedHops) ?: request.origin.remoteHost
+
+/**
+ * Picks the client from an `X-Forwarded-For` value. Each of the [trustedHops] proxies in front of the
+ * service appends one entry, so the client is the [trustedHops]-th entry from the end; anything before it
+ * is client-supplied and ignored. The documented deploy (external HTTPS load balancer, then Cloud Run)
+ * sends `<client>, <load balancer>`, so the default is 2: the last entry alone would put every user in
+ * the load balancer's bucket. With fewer entries than hops the first entry is used.
+ */
+fun clientIpFrom(xForwardedFor: String?, trustedHops: Int): String? {
+    val entries = xForwardedFor?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+    if (entries.isEmpty()) return null
+    return entries.getOrNull(entries.size - trustedHops) ?: entries.first()
+}
 
 /** The quota, rate-limit and spend wiring for one process. */
 class Limits(

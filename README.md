@@ -31,6 +31,7 @@ In the sandbox, prefix Gradle with the truststore `JAVA_TOOL_OPTIONS` (see the A
 | `REWRITE_MODEL` / `STEP_UP_MODEL` | `claude-haiku-5-5` / `claude-sonnet-5-5` | |
 | `FREE_DAILY`, `PRO_DAILY`, `PRO_MONTHLY` | 10, 150, 3000 | |
 | `UID_PER_MINUTE`, `IP_PER_MINUTE` | 10, 60 | |
+| `TRUSTED_PROXY_HOPS` | 2 | Proxies appending to `X-Forwarded-For` before kb-api; 2 for the external HTTPS load balancer of deploy/README.md §6. The per-IP bucket keys on the entry this many from the end. |
 | `HOURLY_SPEND_LIMIT_USD` | 20 | Spend breaker. |
 | `AI_ENABLED` | `true` | Kill switch (503 `ai_paused`). |
 | `MAX_INPUT_CHARS` | 4000 | |

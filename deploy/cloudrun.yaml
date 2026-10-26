@@ -34,6 +34,9 @@ spec:
               value: "PROJECT_NUMBER"
             - name: AI_ENABLED
               value: "true"
+            # External HTTPS load balancer in front (README §6): X-Forwarded-For is "<client>, <lb>".
+            - name: TRUSTED_PROXY_HOPS
+              value: "2"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

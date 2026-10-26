@@ -26,13 +26,15 @@ data class Config(
     val aiEnabled: Boolean = true,
     val maxInputChars: Int = 4000,
     val gateway: GatewayMode = GatewayMode.ANTHROPIC,
+    /** Proxies that append to `X-Forwarded-For` (external HTTPS load balancer: 2). See [com.manjul.kbapi.limits.clientIpFrom]. */
+    val trustedProxyHops: Int = 2,
 ) {
     override fun toString(): String =
         "Config(authMode=$authMode, firebaseProjectId=$firebaseProjectId, firebaseProjectNumber=$firebaseProjectNumber, " +
             "anthropicApiKey=${if (anthropicApiKey == null) "unset" else "set"}, rewriteModel=$rewriteModel, " +
             "stepUpModel=$stepUpModel, freeDaily=$freeDaily, proDaily=$proDaily, proMonthly=$proMonthly, " +
             "uidPerMinute=$uidPerMinute, ipPerMinute=$ipPerMinute, hourlySpendLimitUsd=$hourlySpendLimitUsd, " +
-            "aiEnabled=$aiEnabled, maxInputChars=$maxInputChars, gateway=$gateway)"
+            "aiEnabled=$aiEnabled, maxInputChars=$maxInputChars, gateway=$gateway, trustedProxyHops=$trustedProxyHops)"
 
     companion object {
         /**
@@ -40,6 +42,7 @@ data class Config(
          * - `AUTH_MODE=dev` and `K_SERVICE` is set, i.e. on Cloud Run (decision 6);
          * - `AUTH_MODE` is unknown;
          * - `GATEWAY` is unknown, or `GATEWAY=fake` without `AUTH_MODE=dev`;
+         * - `TRUSTED_PROXY_HOPS` is below 1;
          * - Firebase mode lacks `FIREBASE_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`) or `FIREBASE_PROJECT_NUMBER`.
          */
         fun fromEnv(env: Map<String, String>): Config {
@@ -92,6 +95,9 @@ data class Config(
                 aiEnabled = bool("AI_ENABLED", defaults.aiEnabled),
                 maxInputChars = int("MAX_INPUT_CHARS", defaults.maxInputChars),
                 gateway = gateway,
+                trustedProxyHops = int("TRUSTED_PROXY_HOPS", defaults.trustedProxyHops).also {
+                    if (it < 1) error("TRUSTED_PROXY_HOPS must be at least 1")
+                },
             )
         }
     }

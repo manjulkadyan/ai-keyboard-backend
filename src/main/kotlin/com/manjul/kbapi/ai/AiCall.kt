@@ -16,7 +16,13 @@ import kotlinx.serialization.json.JsonObject
  * The per-request plumbing shared by rewrite and polish: preflight and refund, spend recording and the
  * access-log fields (`prompt_id@version`, model, token counts; never text).
  */
-class AiCall(private val call: ApplicationCall, private val limits: Limits, prompt: Prompt, model: String) : CallHooks {
+class AiCall(
+    private val call: ApplicationCall,
+    private val limits: Limits,
+    prompt: Prompt,
+    model: String,
+    private val trustedProxyHops: Int,
+) : CallHooks {
     private var admission: Admission? = null
     private var input = 0L
     private var output = 0L
@@ -30,7 +36,7 @@ class AiCall(private val call: ApplicationCall, private val limits: Limits, prom
 
     /** Preflight in Task 6 order; throws `ApiException` (503/429/400/402). */
     suspend fun admit(inputChars: Int, clientReqId: String): Admission =
-        limits.preflight.admit(call.principal, call.clientIp(), inputChars, clientReqId).also { admission = it }
+        limits.preflight.admit(call.principal, call.clientIp(trustedProxyHops), inputChars, clientReqId).also { admission = it }
 
     /**
      * Gives the action back when nothing reached the client. A retry of an already counted
