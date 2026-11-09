@@ -32,6 +32,12 @@ class RateLimiter(private val perMinute: Int, private val clock: Clock) {
         return RateDecision(false, ceil(waitMs / 1000.0).toLong().coerceAtLeast(1))
     }
 
+    /** Drops the bucket for [key] (account deletion). */
+    @Synchronized
+    fun forget(key: String) {
+        buckets.remove(key)
+    }
+
     @Synchronized
     fun trackedKeys(): Int = buckets.size
 

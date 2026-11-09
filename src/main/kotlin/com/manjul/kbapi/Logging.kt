@@ -32,11 +32,17 @@ enum class LogField(val key: String) {
     OUTPUT_TOKENS("output_tokens"),
     CACHE_READ_TOKENS("cache_read_tokens"),
     CACHE_WRITE_TOKENS("cache_write_tokens"),
+
+    /** The Play RTDN `notificationType` number (0 for a voided purchase). Never the token or order id. */
+    RTDN_TYPE("rtdn_type"),
 }
 
 /** Route labels that may be logged. Anything else is logged as `other` so a path never carries text. */
 object KnownRoutes {
-    val paths = setOf("/healthz", "/v1/quota", "/v1/rewrite", "/v1/polish", "/v1/ai/report")
+    val paths = setOf(
+        "/healthz", "/v1/quota", "/v1/rewrite", "/v1/polish", "/v1/ai/report",
+        "/v1/entitlement", "/v1/entitlement/verify", "/v1/account/delete", "/internal/rtdn", "/delete-account",
+    )
 
     fun label(path: String): String = if (path in paths) path else "other"
 }

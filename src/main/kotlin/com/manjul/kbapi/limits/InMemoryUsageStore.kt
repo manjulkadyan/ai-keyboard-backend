@@ -47,4 +47,11 @@ class InMemoryUsageStore : UsageStore {
     override suspend fun used(uid: String, day: String): Int = lock(uid).withLock { days["${uid}_$day"]?.count ?: 0 }
 
     override suspend fun usedMonth(uid: String, month: String): Int = lock(uid).withLock { months["${uid}_$month"] ?: 0 }
+
+    override suspend fun deleteUid(uid: String) = lock(uid).withLock {
+        val prefix = "${uid}_"
+        days.keys.removeIf { it.startsWith(prefix) }
+        months.keys.removeIf { it.startsWith(prefix) }
+        Unit
+    }
 }

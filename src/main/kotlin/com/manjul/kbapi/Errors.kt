@@ -61,6 +61,11 @@ object Errors {
         mapOf("retry_after" to JsonPrimitive(retryAfterSeconds)),
         mapOf("Retry-After" to retryAfterSeconds.toString()),
     )
+    /** The purchase token is unknown to Play, for another product, or a canceled pending purchase. */
+    fun invalidToken() = ApiError(HttpStatusCode.BadRequest, "invalid_token")
+
+    /** A dependency (Play, Firebase Auth) is down or billing is not configured. The client retries later. */
+    fun unavailable() = ApiError(HttpStatusCode.ServiceUnavailable, "unavailable")
     fun internal() = ApiError(HttpStatusCode.InternalServerError, "internal")
     fun notFound() = ApiError(HttpStatusCode.NotFound, "not_found")
     fun methodNotAllowed() = ApiError(HttpStatusCode.MethodNotAllowed, "method_not_allowed")

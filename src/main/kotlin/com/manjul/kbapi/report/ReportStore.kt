@@ -22,4 +22,7 @@ data class AiReport(
 interface ReportStore {
     /** Idempotent per (uid, clientReqId): a retry overwrites the same record. */
     suspend fun save(report: AiReport)
+
+    /** Removes every report of [uid] (account deletion). Idempotent. */
+    suspend fun deleteUid(uid: String)
 }

@@ -25,6 +25,12 @@ class FirestoreReportStore(private val db: Firestore) : ReportStore {
         withContext(Dispatchers.IO) { doc.set(fields).get() }
     }
 
+    override suspend fun deleteUid(uid: String) {
+        withContext(Dispatchers.IO) {
+            db.collection(COLLECTION).whereEqualTo("uid", uid).get().get().documents.forEach { it.reference.delete().get() }
+        }
+    }
+
     companion object {
         const val COLLECTION = "ai_reports"
 

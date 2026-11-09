@@ -28,13 +28,27 @@ data class Config(
     val gateway: GatewayMode = GatewayMode.ANTHROPIC,
     /** Proxies that append to `X-Forwarded-For` (external HTTPS load balancer: 2). See [com.manjul.kbapi.limits.clientIpFrom]. */
     val trustedProxyHops: Int = 2,
+    /** The Play package kb-api reads subscriptions for. RTDN for any other package is dropped. */
+    val playPackageName: String = "com.manjul.aikeyboard",
+    /** PKCS#8 EC P-256 key (base64 DER or PEM) from Secret Manager. Unset: entitlement routes answer 503. */
+    val entitlementSigningKey: String? = null,
+    /** The push endpoint URL set as the OIDC audience on the Pub/Sub subscription. */
+    val rtdnAudience: String? = null,
+    /** The service account Pub/Sub signs push tokens as. With [rtdnAudience] unset, RTDN answers 401. */
+    val rtdnServiceAccount: String? = null,
+    /** The contact address on the public deletion page (decision 21). */
+    val deletionContactEmail: String = "privacy@example.com",
 ) {
     override fun toString(): String =
         "Config(authMode=$authMode, firebaseProjectId=$firebaseProjectId, firebaseProjectNumber=$firebaseProjectNumber, " +
             "anthropicApiKey=${if (anthropicApiKey == null) "unset" else "set"}, rewriteModel=$rewriteModel, " +
             "stepUpModel=$stepUpModel, freeDaily=$freeDaily, proDaily=$proDaily, proMonthly=$proMonthly, " +
             "uidPerMinute=$uidPerMinute, ipPerMinute=$ipPerMinute, hourlySpendLimitUsd=$hourlySpendLimitUsd, " +
-            "aiEnabled=$aiEnabled, maxInputChars=$maxInputChars, gateway=$gateway, trustedProxyHops=$trustedProxyHops)"
+            "aiEnabled=$aiEnabled, maxInputChars=$maxInputChars, gateway=$gateway, trustedProxyHops=$trustedProxyHops, " +
+            "playPackageName=$playPackageName, " +
+            "entitlementSigningKey=${if (entitlementSigningKey == null) "unset" else "set"}, " +
+            "rtdnAudience=${rtdnAudience ?: "unset"}, rtdnServiceAccount=${rtdnServiceAccount ?: "unset"}, " +
+            "deletionContactEmail=$deletionContactEmail)"
 
     companion object {
         /**
@@ -43,6 +57,8 @@ data class Config(
          * - `AUTH_MODE` is unknown;
          * - `GATEWAY` is unknown, or `GATEWAY=fake` without `AUTH_MODE=dev`;
          * - `TRUSTED_PROXY_HOPS` is below 1;
+         * - only one of `RTDN_AUDIENCE` and `RTDN_SERVICE_ACCOUNT` is set;
+         * - `DELETION_CONTACT_EMAIL` is not a plain address;
          * - Firebase mode lacks `FIREBASE_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`) or `FIREBASE_PROJECT_NUMBER`.
          */
         fun fromEnv(env: Map<String, String>): Config {
@@ -78,7 +94,16 @@ data class Config(
                 if (projectId == null) error("FIREBASE_PROJECT_ID is required when AUTH_MODE=firebase")
                 if (projectNumber == null) error("FIREBASE_PROJECT_NUMBER is required when AUTH_MODE=firebase")
             }
+            val rtdnAudience = str("RTDN_AUDIENCE")
+            val rtdnServiceAccount = str("RTDN_SERVICE_ACCOUNT")
+            if ((rtdnAudience == null) != (rtdnServiceAccount == null)) {
+                error("RTDN_AUDIENCE and RTDN_SERVICE_ACCOUNT must be set together")
+            }
             val defaults = Config(AuthMode.DEV, "", "", null)
+            val contact = str("DELETION_CONTACT_EMAIL") ?: defaults.deletionContactEmail
+            if (!Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}").matches(contact)) {
+                error("DELETION_CONTACT_EMAIL must be a plain email address")
+            }
             return Config(
                 authMode = mode,
                 firebaseProjectId = projectId.orEmpty(),
@@ -98,6 +123,11 @@ data class Config(
                 trustedProxyHops = int("TRUSTED_PROXY_HOPS", defaults.trustedProxyHops).also {
                     if (it < 1) error("TRUSTED_PROXY_HOPS must be at least 1")
                 },
+                playPackageName = str("PLAY_PACKAGE_NAME") ?: defaults.playPackageName,
+                entitlementSigningKey = str("ENTITLEMENT_SIGNING_KEY"),
+                rtdnAudience = rtdnAudience,
+                rtdnServiceAccount = rtdnServiceAccount,
+                deletionContactEmail = contact,
             )
         }
     }

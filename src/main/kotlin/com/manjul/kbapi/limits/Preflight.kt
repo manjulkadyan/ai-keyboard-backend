@@ -60,13 +60,17 @@ fun clientIpFrom(xForwardedFor: String?, trustedHops: Int): String? {
     return entries.getOrNull(entries.size - trustedHops) ?: entries.first()
 }
 
-/** The quota, rate-limit and spend wiring for one process. */
+/** The quota, rate-limit, spend, entitlement and integrity wiring for one process. */
 class Limits(
     val quota: QuotaService,
     val uidLimiter: RateLimiter,
     val ipLimiter: RateLimiter,
     val spend: SpendTracker,
     val preflight: Preflight,
+    val usage: UsageStore,
+    val entitlements: EntitlementStore,
+    val integrity: IntegrityVerdictCache,
+    val rtdnDedupe: RtdnDedupe,
 ) {
     companion object {
         fun create(
@@ -74,21 +78,28 @@ class Limits(
             clock: Clock,
             usage: UsageStore,
             spendStore: SpendStore,
-            entitlements: EntitlementStore = InMemoryEntitlementStore(),
+            entitlements: EntitlementStore = InMemoryEntitlementStore(clock),
             integrity: IntegrityVerdictCache = InMemoryIntegrityVerdictCache(),
+            rtdnDedupe: RtdnDedupe = InMemoryRtdnDedupe(),
         ): Limits {
             val quota = QuotaService(usage, TierResolver(entitlements, integrity, clock), config, clock)
             val uid = RateLimiter(config.uidPerMinute, clock)
             val ip = RateLimiter(config.ipPerMinute, clock)
             val spend = SpendTracker(spendStore, ModelPrice.DEFAULTS, config.hourlySpendLimitUsd, clock)
-            return Limits(quota, uid, ip, spend, Preflight(config, spend, uid, ip, quota))
+            return Limits(
+                quota, uid, ip, spend, Preflight(config, spend, uid, ip, quota), usage, entitlements, integrity,
+                rtdnDedupe,
+            )
         }
 
         fun inMemory(config: Config, clock: Clock): Limits =
             create(config, clock, InMemoryUsageStore(), InMemorySpendStore())
 
-        /** Entitlement and integrity stay empty in-memory stores until S4 writes them. */
-        fun firestore(config: Config, clock: Clock, db: Firestore): Limits =
-            create(config, clock, FirestoreUsageStore(db), FirestoreSpendStore(db))
+        fun firestore(config: Config, clock: Clock, db: Firestore): Limits = create(
+            config, clock, FirestoreUsageStore(db), FirestoreSpendStore(db),
+            entitlements = FirestoreEntitlementStore(db, clock),
+            integrity = FirestoreIntegrityVerdictCache(db),
+            rtdnDedupe = FirestoreRtdnDedupe(db, clock),
+        )
     }
 }

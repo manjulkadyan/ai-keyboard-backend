@@ -1,5 +1,6 @@
 package com.manjul.kbapi.limits
 
+import com.google.cloud.firestore.FieldPath
 import com.google.cloud.firestore.Firestore
 import com.google.cloud.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
@@ -71,5 +72,19 @@ class FirestoreUsageStore(private val db: Firestore) : UsageStore {
 
     override suspend fun usedMonth(uid: String, month: String): Int = withContext(Dispatchers.IO) {
         monthRef(uid, month).get().get().getLong("count")?.toInt() ?: 0
+    }
+
+    /** Deletes `usage/{uid}_*` and `usage_m/{uid}_*` with a document-id range query on the `{uid}_` prefix. */
+    override suspend fun deleteUid(uid: String) {
+        withContext(Dispatchers.IO) {
+            val prefix = "${uid}_"
+            for (collection in listOf("usage", "usage_m")) {
+                db.collection(collection)
+                    .whereGreaterThanOrEqualTo(FieldPath.documentId(), db.collection(collection).document(prefix))
+                    .whereLessThan(FieldPath.documentId(), db.collection(collection).document(prefix + "\uf8ff"))
+                    .get().get().documents
+                    .forEach { it.reference.delete().get() }
+            }
+        }
     }
 }

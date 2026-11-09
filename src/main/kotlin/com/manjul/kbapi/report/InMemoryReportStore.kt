@@ -10,5 +10,9 @@ class InMemoryReportStore : ReportStore {
         reports[report.uid to report.clientReqId] = report
     }
 
+    override suspend fun deleteUid(uid: String) {
+        reports.keys.removeIf { it.first == uid }
+    }
+
     fun all(): List<AiReport> = reports.values.sortedBy { it.createdAt }
 }

@@ -34,6 +34,9 @@ interface UsageStore {
     suspend fun used(uid: String, day: String): Int
 
     suspend fun usedMonth(uid: String, month: String): Int
+
+    /** Removes every day and month counter of [uid] (account deletion). Idempotent. */
+    suspend fun deleteUid(uid: String)
 }
 
 /** How many request-id entries a day record keeps for idempotency (oldest dropped first). */

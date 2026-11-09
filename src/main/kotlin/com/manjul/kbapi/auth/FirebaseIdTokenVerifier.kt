@@ -20,14 +20,17 @@ class FirebaseIdTokenVerifier(private val auth: FirebaseAuth) : IdTokenVerifier 
 
     companion object {
         /** Initialises the default FirebaseApp with Application Default Credentials (the Cloud Run service account). */
-        fun create(projectId: String): FirebaseIdTokenVerifier {
+        fun create(projectId: String): FirebaseIdTokenVerifier = FirebaseIdTokenVerifier(firebaseAuth(projectId))
+
+        /** The default app's [FirebaseAuth], initialising the app on first use. Shared with account deletion. */
+        fun firebaseAuth(projectId: String): FirebaseAuth {
             val app = FirebaseApp.getApps().firstOrNull() ?: FirebaseApp.initializeApp(
                 FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.getApplicationDefault())
                     .setProjectId(projectId)
                     .build(),
             )
-            return FirebaseIdTokenVerifier(FirebaseAuth.getInstance(app))
+            return FirebaseAuth.getInstance(app)
         }
     }
 }

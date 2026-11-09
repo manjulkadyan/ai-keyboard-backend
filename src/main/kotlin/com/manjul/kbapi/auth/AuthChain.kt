@@ -14,6 +14,13 @@ class AuthChainConfig {
     var appCheck: AppCheckVerifier = AppCheckVerifier { false }
     var idTokens: IdTokenVerifier = IdTokenVerifier { null }
 
+    /**
+     * Called with the uid after a real App Check and ID token pass (never in dev mode). kb-api uses it to record
+     * the integrity verdict (decision 6): the App Check token is minted from a Play Integrity attestation.
+     * A failure here never fails the request.
+     */
+    var onVerified: suspend (String) -> Unit = {}
+
     /** Every path under this prefix is authenticated, including unknown ones. */
     var protectedPrefix: String = "/v1/"
 }
@@ -22,7 +29,8 @@ class AuthChainConfig {
  * TRD §5.2 auth chain on `/v1/...`:
  * 1. `X-Firebase-AppCheck` missing or invalid -> 401 `app_check`;
  * 2. `Authorization: Bearer <Firebase ID token>` missing or invalid -> 401 `auth`.
- * In [AuthMode.DEV], `X-Dev-Uid` replaces both. On success the [Principal] is stored on the call.
+ * In [AuthMode.DEV], `X-Dev-Uid` replaces both. On success the [Principal] is stored on the call, and in
+ * Firebase mode [AuthChainConfig.onVerified] runs.
  */
 val AuthChain = createApplicationPlugin("AuthChain", ::AuthChainConfig) {
     val config = pluginConfig
@@ -49,5 +57,10 @@ val AuthChain = createApplicationPlugin("AuthChain", ::AuthChainConfig) {
         val uid = idToken.takeIf { it.isNotEmpty() }?.let { withContext(Dispatchers.IO) { config.idTokens.verify(it) } }
             ?: return@onCall Errors.respond(call, Errors.auth())
         call.attributes.put(PrincipalKey, Principal.of(uid))
+        try {
+            config.onVerified(uid)
+        } catch (_: Exception) {
+            // The verdict is refreshed on the next request; the exception text is never logged (OPS-001).
+        }
     }
 }
