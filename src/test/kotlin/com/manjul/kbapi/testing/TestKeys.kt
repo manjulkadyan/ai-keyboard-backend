@@ -3,6 +3,7 @@ package com.manjul.kbapi.testing
 import com.manjul.kbapi.auth.IdTokenVerifier
 import com.manjul.kbapi.auth.JwksAppCheckVerifier
 import com.manjul.kbapi.auth.RsaJwtVerifier
+import com.manjul.kbapi.billing.PubSubOidcVerifier
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -78,6 +79,40 @@ object TestKeys {
             .issuer("https://securetoken.google.com/$PROJECT_ID")
             .subject(uid)
             .audience(audience)
+            .issueTime(Date.from(NOW.minusSeconds(60)))
+            .expirationTime(Date.from(NOW.plus(expiresIn)))
+            .build(),
+    )
+
+    const val PUBSUB_AUDIENCE = "https://kb-api.example.test/internal/rtdn"
+    const val PUBSUB_SA = "rtdn-push@kb-test-project.iam.gserviceaccount.com"
+
+    /** Stands in for Google's OIDC key (`https://www.googleapis.com/oauth2/v3/certs`). */
+    val pubSubKey: RSAKey = RSAKeyGenerator(2048).keyID("pubsub-kid-1").generate()
+
+    fun pubSubVerifier(clock: Clock = this.clock) = PubSubOidcVerifier(
+        audience = PUBSUB_AUDIENCE,
+        serviceAccountEmail = PUBSUB_SA,
+        jwks = ImmutableJWKSet(JWKSet(pubSubKey.toPublicJWK())),
+        clock = clock,
+    )
+
+    /** An OIDC token shaped like the one a Pub/Sub push subscription sends. */
+    fun pubSubToken(
+        audience: String = PUBSUB_AUDIENCE,
+        email: String = PUBSUB_SA,
+        emailVerified: Boolean = true,
+        issuer: String = "https://accounts.google.com",
+        expiresIn: Duration = Duration.ofHours(1),
+        key: RSAKey = pubSubKey,
+    ): String = sign(
+        key,
+        JWTClaimsSet.Builder()
+            .issuer(issuer)
+            .subject("109876543210987654321")
+            .audience(audience)
+            .claim("email", email)
+            .claim("email_verified", emailVerified)
             .issueTime(Date.from(NOW.minusSeconds(60)))
             .expirationTime(Date.from(NOW.plus(expiresIn)))
             .build(),
