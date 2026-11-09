@@ -129,6 +129,108 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/Internal" }
 
+  /v1/entitlement/verify:
+    post:
+      operationId: verifyEntitlement
+      description: |
+        Links the caller's Play purchase token to the caller's uid after a fresh Play read, acknowledges an
+        unacknowledged purchase, and returns the signed verdict. A token verified by another uid moves to the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyRequest" }
+      responses:
+        "200":
+          description: The signed verdict.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entitlement" }
+        "400": { $ref: "#/components/responses/InvalidToken" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /v1/entitlement:
+    get:
+      operationId: getEntitlement
+      description: The caller's stored verdict, re-evaluated against the clock. No Play call. No purchase is `none`.
+      responses:
+        "200":
+          description: The signed verdict.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entitlement" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /v1/account/delete:
+    post:
+      operationId: deleteAccount
+      description: |
+        "Delete my data". Deletes everything kb-api keeps for the uid of the verified ID token (quota counters,
+        rate buckets, the entitlement link, the integrity verdict, AI reports), then the Firebase user.
+        Idempotent. The Play subscription is not canceled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeleteRequest" }
+      responses:
+        "200":
+          description: Deleted (also on a repeat).
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: boolean, enum: [true] }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Internal" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /internal/rtdn:
+    post:
+      operationId: playRtdnPush
+      description: |
+        Pub/Sub push endpoint for Play Real-time Developer Notifications. Authenticated by the push OIDC token
+        (audience and service account checked), not by Firebase. Idempotent on `message.messageId`.
+      security:
+        - pubSubOidc: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "204":
+          description: Processed, already processed, or ignored (test notification, other package, bad data).
+        "401":
+          description: Missing or invalid push token, or push auth not configured. No work is done.
+        "503":
+          description: Play is unavailable. Pub/Sub redelivers the message.
+
+  /delete-account:
+    get:
+      operationId: deleteAccountPage
+      description: Public data deletion page (decision 21). Static HTML without a form.
+      security: []
+      responses:
+        "200":
+          description: The page.
+          content:
+            text/html:
+              schema: { type: string }
+
 components:
   securitySchemes:
     appCheck:
@@ -141,6 +243,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Firebase ID token of the anonymous (or upgraded) user.
+    pubSubOidc:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Google-signed OIDC token that Pub/Sub attaches to a push (audience = the push endpoint URL).
 
   headers:
     XRequestId:
@@ -207,6 +314,22 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    InvalidToken:
+      description: |
+        `invalid_token`: Play does not know the purchase token, it is for another product, or the pending
+        purchase was canceled. The client drops the token. `bad_request`: malformed body.
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: "`unavailable`: Play or Firebase is down, or billing is not configured. The client retries later."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     Internal:
       description: "`internal`."
       headers:
@@ -222,7 +345,7 @@ components:
       properties:
         error:
           type: string
-          enum: [too_long, bad_request, app_check, auth, quota, rate_limited, refused, ai_paused, overloaded, internal, not_found, method_not_allowed]
+          enum: [too_long, bad_request, app_check, auth, quota, rate_limited, refused, ai_paused, overloaded, internal, not_found, method_not_allowed, invalid_token, unavailable]
         resets_at: { type: string, format: date-time }
         retry_after: { type: integer, minimum: 0 }
 
@@ -304,3 +427,31 @@ components:
           description: |
             Sent only when the user ticked "include the text". Ignored when `include_text` is false;
             stored capped at 4,000 characters.
+
+    VerifyRequest:
+      type: object
+      required: [purchase_token, product_id]
+      properties:
+        purchase_token: { type: string, minLength: 1, maxLength: 4096 }
+        product_id: { type: string, minLength: 1, maxLength: 64 }
+
+    Entitlement:
+      type: object
+      description: |
+        `signature` is base64 DER SHA256withECDSA over `v1|<pro_active>|<state>|<expires_at>|<issued_at>`.
+        `state` and `issued_at` were added in S4 and stay optional for older clients.
+      required: [pro_active, expires_at, signature]
+      properties:
+        pro_active: { type: boolean }
+        expires_at: { type: integer, format: int64, minimum: 0, description: Epoch ms. 0 when there is no purchase. }
+        signature: { type: string }
+        state:
+          type: string
+          enum: [none, pending, active, grace, hold, paused, expired, revoked]
+        issued_at: { type: integer, format: int64, minimum: 0, description: Epoch ms. }
+
+    DeleteRequest:
+      type: object
+      required: [client_req_id]
+      properties:
+        client_req_id: { type: string, minLength: 1, maxLength: 64 }

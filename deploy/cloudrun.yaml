@@ -42,6 +42,20 @@ spec:
                 secretKeyRef:
                   name: anthropic-api-key
                   key: latest
+            # Sprint 4 billing (README §9).
+            - name: PLAY_PACKAGE_NAME
+              value: com.manjul.aikeyboard
+            - name: ENTITLEMENT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: entitlement-signing-key
+                  key: latest
+            - name: RTDN_AUDIENCE
+              value: https://DOMAIN/internal/rtdn
+            - name: RTDN_SERVICE_ACCOUNT
+              value: rtdn-push@PROJECT_ID.iam.gserviceaccount.com
+            - name: DELETION_CONTACT_EMAIL
+              value: CONTACT_EMAIL
           startupProbe:
             httpGet:
               path: /healthz
