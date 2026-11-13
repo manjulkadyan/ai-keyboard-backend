@@ -22,8 +22,14 @@ import com.manjul.kbapi.billing.EntitlementSigner
 import com.manjul.kbapi.billing.GooglePlayDeveloperApi
 import com.manjul.kbapi.billing.PlayDeveloperApi
 import com.manjul.kbapi.billing.PubSubOidcVerifier
+import com.manjul.kbapi.dictionary.DictionaryService
+import com.manjul.kbapi.dictionary.DictionarySource
+import com.manjul.kbapi.dictionary.FakeDictionarySource
+import com.manjul.kbapi.dictionary.HttpDictionarySource
 import com.manjul.kbapi.limits.Limits
+import com.manjul.kbapi.limits.RateLimiter
 import com.manjul.kbapi.routes.accountRoutes
+import com.manjul.kbapi.routes.dictionaryRoutes
 import com.manjul.kbapi.routes.entitlementRoutes
 import com.manjul.kbapi.routes.rtdnRoutes
 import com.manjul.kbapi.routes.staticRoutes
@@ -50,7 +56,8 @@ import java.time.Clock
 /**
  * Everything the module needs; tests swap verifiers, the clock, the limit stores, the model gateway and the
  * billing fakes. The billing dependencies are nullable: a missing one makes its routes fail closed (503 for
- * entitlement and delete, 401 for RTDN) instead of failing startup.
+ * entitlement and delete, 401 for RTDN) instead of failing startup. [dictionary] is null until
+ * `DICTIONARY_SOURCE_URL` is set: `/v1/dictionary` then answers 503.
  */
 data class Services(
     val config: Config,
@@ -66,7 +73,16 @@ data class Services(
     val pushAuth: PubSubOidcVerifier? = null,
     val userDeleter: FirebaseUserDeleter? = null,
     val playRetryDelaysMs: List<Long> = listOf(200L, 1000L),
+    val dictionary: DictionarySource? = null,
 ) {
+    /** `/v1/dictionary` lookups per uid (60 a minute by default). Account delete forgets the uid's bucket. */
+    val dictionaryLimiter: RateLimiter by lazy { RateLimiter(config.dictionaryPerMinute, clock) }
+
+    private val dictionaryService: DictionaryService? by lazy { dictionary?.let { DictionaryService(it, clock) } }
+
+    /** The shared lookup service with its 24 h cache, or null when no source is configured. */
+    fun dictionaryService(): DictionaryService? = dictionaryService
+
     private val entitlementService: EntitlementService? by lazy {
         val api = play ?: return@lazy null
         val key = signer ?: return@lazy null
@@ -107,12 +123,14 @@ data class Services(
                     signer = billing.signer,
                     pushAuth = billing.pushAuth,
                     userDeleter = FirebaseAuthUserDeleter(FirebaseIdTokenVerifier.firebaseAuth(config.firebaseProjectId)),
+                    dictionary = dictionarySource(config),
                 )
                 // Dev mode never consults the verifiers; reject everything to be safe.
                 AuthMode.DEV -> Services(
                     config, AppCheckVerifier { false }, IdTokenVerifier { null }, clock, limits,
                     gateway = gateway, reports = reports,
                     play = billing.play, signer = billing.signer, pushAuth = billing.pushAuth,
+                    dictionary = dictionarySource(config),
                 )
             }
         }
@@ -134,6 +152,16 @@ private fun billing(config: Config, clock: Clock, onGcp: Boolean): Billing = Bil
         null
     },
 )
+
+/**
+ * The proxied dictionary (OD-11): only when `DICTIONARY_SOURCE_URL` is set, else null (503). `GATEWAY=fake`
+ * (dev auth only) serves a canned word without a URL.
+ */
+private fun dictionarySource(config: Config): DictionarySource? = when {
+    config.dictionarySourceUrl != null -> HttpDictionarySource(config.dictionarySourceUrl)
+    config.gateway == GatewayMode.FAKE -> FakeDictionarySource.demo()
+    else -> null
+}
 
 /** The key is read from the environment only (Secret Manager in prod); without it AI calls fail closed. */
 private fun gateway(config: Config): ModelGateway = when {
@@ -169,7 +197,8 @@ fun Application.kbApi(services: Services, extraRoutes: Route.() -> Unit = {}) {
         polishRoutes(PolishService(services.config, services.prompts, services.limits, runner))
         reportRoutes(services)
         entitlementRoutes(services)
-        accountRoutes(services)
+        accountRoutes(services, extraLimiters = listOf(services.dictionaryLimiter))
+        dictionaryRoutes(services)
         rtdnRoutes(services)
         staticRoutes(services)
         extraRoutes()
@@ -182,11 +211,12 @@ fun main() {
     val gcpProject = System.getenv("GOOGLE_CLOUD_PROJECT")?.trim()?.takeIf { it.isNotEmpty() }
     log.info(
         "starting kb-api auth_mode={} ai_enabled={} limits_store={} gateway={} anthropic_key={} " +
-            "entitlement_key={} rtdn_push_auth={}",
+            "entitlement_key={} rtdn_push_auth={} dictionary_source={}",
         config.authMode, config.aiEnabled, if (gcpProject == null) "memory" else "firestore", config.gateway,
         if (config.anthropicApiKey == null) "unset" else "set",
         if (config.entitlementSigningKey == null) "unset" else "set",
         if (config.rtdnAudience == null) "unset" else "set",
+        if (config.dictionarySourceUrl == null) "unset" else "set",
     )
     val services = Services.production(config, gcpProject = gcpProject)
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080

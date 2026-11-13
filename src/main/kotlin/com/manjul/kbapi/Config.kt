@@ -38,6 +38,13 @@ data class Config(
     val rtdnServiceAccount: String? = null,
     /** The contact address on the public deletion page (decision 21). */
     val deletionContactEmail: String = "privacy@example.com",
+    /**
+     * The dictionary source base URL (OD-11), for example `https://freedictionaryapi.com/api/v1/entries`.
+     * Unset: `/v1/dictionary` answers 503 `dictionary_unavailable` (until the source terms are checked).
+     */
+    val dictionarySourceUrl: String? = null,
+    /** `/v1/dictionary` lookups a minute per uid (Sprint 5 open question 5). */
+    val dictionaryPerMinute: Int = 60,
 ) {
     override fun toString(): String =
         "Config(authMode=$authMode, firebaseProjectId=$firebaseProjectId, firebaseProjectNumber=$firebaseProjectNumber, " +
@@ -48,7 +55,8 @@ data class Config(
             "playPackageName=$playPackageName, " +
             "entitlementSigningKey=${if (entitlementSigningKey == null) "unset" else "set"}, " +
             "rtdnAudience=${rtdnAudience ?: "unset"}, rtdnServiceAccount=${rtdnServiceAccount ?: "unset"}, " +
-            "deletionContactEmail=$deletionContactEmail)"
+            "deletionContactEmail=$deletionContactEmail, dictionarySourceUrl=${dictionarySourceUrl ?: "unset"}, " +
+            "dictionaryPerMinute=$dictionaryPerMinute)"
 
     companion object {
         /**
@@ -59,6 +67,7 @@ data class Config(
          * - `TRUSTED_PROXY_HOPS` is below 1;
          * - only one of `RTDN_AUDIENCE` and `RTDN_SERVICE_ACCOUNT` is set;
          * - `DELETION_CONTACT_EMAIL` is not a plain address;
+         * - `DICTIONARY_SOURCE_URL` is not an `https` URL (`http` only for localhost);
          * - Firebase mode lacks `FIREBASE_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`) or `FIREBASE_PROJECT_NUMBER`.
          */
         fun fromEnv(env: Map<String, String>): Config {
@@ -104,6 +113,12 @@ data class Config(
             if (!Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}").matches(contact)) {
                 error("DELETION_CONTACT_EMAIL must be a plain email address")
             }
+            val dictionaryUrl = str("DICTIONARY_SOURCE_URL")
+            if (dictionaryUrl != null && !dictionaryUrl.startsWith("https://") &&
+                !Regex("http://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?(/.*)?").matches(dictionaryUrl)
+            ) {
+                error("DICTIONARY_SOURCE_URL must be an https URL")
+            }
             return Config(
                 authMode = mode,
                 firebaseProjectId = projectId.orEmpty(),
@@ -128,6 +143,10 @@ data class Config(
                 rtdnAudience = rtdnAudience,
                 rtdnServiceAccount = rtdnServiceAccount,
                 deletionContactEmail = contact,
+                dictionarySourceUrl = dictionaryUrl,
+                dictionaryPerMinute = int("DICTIONARY_PER_MINUTE", defaults.dictionaryPerMinute).also {
+                    if (it < 1) error("DICTIONARY_PER_MINUTE must be at least 1")
+                },
             )
         }
     }

@@ -66,6 +66,8 @@ object Errors {
 
     /** A dependency (Play, Firebase Auth) is down or billing is not configured. The client retries later. */
     fun unavailable() = ApiError(HttpStatusCode.ServiceUnavailable, "unavailable")
+    /** No dictionary source is configured (`DICTIONARY_SOURCE_URL` unset), or the source failed. */
+    fun dictionaryUnavailable() = ApiError(HttpStatusCode.ServiceUnavailable, "dictionary_unavailable")
     fun internal() = ApiError(HttpStatusCode.InternalServerError, "internal")
     fun notFound() = ApiError(HttpStatusCode.NotFound, "not_found")
     fun methodNotAllowed() = ApiError(HttpStatusCode.MethodNotAllowed, "method_not_allowed")

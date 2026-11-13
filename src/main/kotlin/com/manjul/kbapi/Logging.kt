@@ -42,6 +42,7 @@ object KnownRoutes {
     val paths = setOf(
         "/healthz", "/v1/quota", "/v1/rewrite", "/v1/polish", "/v1/ai/report",
         "/v1/entitlement", "/v1/entitlement/verify", "/v1/account/delete", "/internal/rtdn", "/delete-account",
+        "/v1/dictionary",
     )
 
     fun label(path: String): String = if (path in paths) path else "other"

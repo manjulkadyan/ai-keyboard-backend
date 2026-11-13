@@ -47,6 +47,7 @@ costs money, so it never runs in `test`. See [`evals/README.md`](evals/README.md
 | `…/auth/` | App Check and Firebase ID token verification, dev auth |
 | `…/limits/` | Tiers, daily/monthly quota, per-uid and per-IP rate limits, hourly spend breaker |
 | `…/report/` | Storage for `/v1/ai/report` |
+| `…/dictionary/` | `/v1/dictionary` source, 24 h cache and fake source |
 | `…/routes/` | HTTP routes |
 | `…/evals/` | Offline eval runner and graders |
 | `prompts/` | Versioned system prompts, packaged as resources |
@@ -69,13 +70,15 @@ costs money, so it never runs in `test`. See [`evals/README.md`](evals/README.md
 | `HOURLY_SPEND_LIMIT_USD` | 20 | Spend breaker. |
 | `AI_ENABLED` | `true` | Kill switch (503 `ai_paused`). |
 | `MAX_INPUT_CHARS` | 4000 | |
+| `DICTIONARY_SOURCE_URL` | | Base URL of the dictionary source (OD-11), for example `https://freedictionaryapi.com/api/v1/entries`. Must be https (http only for localhost). Unset: `/v1/dictionary` returns 503 `dictionary_unavailable`, unless `GATEWAY=fake`. |
+| `DICTIONARY_PER_MINUTE` | 60 | `/v1/dictionary` lookups per uid. |
 | `PORT` | 8080 | |
 
 ## Contract and errors
 
 `src/main/resources/openapi.yaml` is the API contract; `OpenApiContractTest` validates test traffic against it.
 Errors are `{"error": code, ...}`: `too_long`/`bad_request` 400, `app_check`/`auth` 401, `quota` 402 (`resets_at`),
-`rate_limited` 429 (`Retry-After`), `refused` 451, `ai_paused` 503, `overloaded` 503 (`Retry-After`, `retry_after`),
+`rate_limited` 429 (`Retry-After`), `refused` 451, `ai_paused` 503, `dictionary_unavailable` 503, `not_found` 404, `overloaded` 503 (`Retry-After`, `retry_after`),
 `internal` 500. Every response has `X-Request-Id`.
 
 ## AI calls

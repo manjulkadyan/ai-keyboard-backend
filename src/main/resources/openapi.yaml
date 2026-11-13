@@ -198,6 +198,46 @@ paths:
         "500": { $ref: "#/components/responses/Internal" }
         "503": { $ref: "#/components/responses/Unavailable" }
 
+  /v1/dictionary:
+    post:
+      operationId: lookupDictionary
+      description: |
+        Looks one word up in the proxied dictionary source (OD-11). The device never calls the source; kb-api sends
+        it the word and the language only. Answers (found and not found) are cached in memory for 24 h by
+        `(lang, word)`, at most 10,000 keys, shared across users. The word is never logged. Rate limit: 60 lookups
+        a minute per uid. Without a configured source (`DICTIONARY_SOURCE_URL`) the route answers 503.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DictionaryRequest" }
+      responses:
+        "200":
+          description: The normalised entries, one per sense.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DictionaryResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`not_found`: the source has no entry for the word."
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/Internal" }
+        "503":
+          description: "`dictionary_unavailable`: no source is configured, or the source failed. Not cached."
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/XRequestId" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /internal/rtdn:
     post:
       operationId: playRtdnPush
@@ -345,7 +385,7 @@ components:
       properties:
         error:
           type: string
-          enum: [too_long, bad_request, app_check, auth, quota, rate_limited, refused, ai_paused, overloaded, internal, not_found, method_not_allowed, invalid_token, unavailable]
+          enum: [too_long, bad_request, app_check, auth, quota, rate_limited, refused, ai_paused, overloaded, internal, not_found, method_not_allowed, invalid_token, unavailable, dictionary_unavailable]
         resets_at: { type: string, format: date-time }
         retry_after: { type: integer, minimum: 0 }
 
@@ -455,3 +495,36 @@ components:
       required: [client_req_id]
       properties:
         client_req_id: { type: string, minLength: 1, maxLength: 64 }
+
+    DictionaryRequest:
+      type: object
+      required: [word, lang]
+      properties:
+        word:
+          type: string
+          minLength: 1
+          description: |
+            One token after trimming: 1 to 64 letters, `'` or `-`. Matched case-insensitively. Anything else is
+            400 `bad_request`.
+        lang: { type: string, enum: [en], description: "Only `en` in Sprint 5." }
+
+    DictionaryResponse:
+      type: object
+      required: [entries, source, licence_url]
+      properties:
+        entries:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/DictionaryEntry" }
+        source: { type: string, description: "Source id, for example `freedictionaryapi`." }
+        licence_url: { type: string, description: "The licence of the returned text, shown as attribution." }
+
+    DictionaryEntry:
+      type: object
+      required: [headword, pos, definition, example, synonyms]
+      properties:
+        headword: { type: string }
+        pos: { type: string, description: "Part of speech as the source names it, for example `verb`." }
+        definition: { type: string }
+        example: { type: string, nullable: true }
+        synonyms: { type: array, items: { type: string } }

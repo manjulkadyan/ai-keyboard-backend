@@ -18,7 +18,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
-/** ARCH-006: an S3 client keeps working against the S4 spec and server. */
+/**
+ * ARCH-006: an S3 client keeps working against the S4 spec and server. S5 adds `/v1/dictionary`; the S3 and S4
+ * apps never call it, so these tests only prove that the older routes and error codes do not change.
+ */
 class BackwardsCompatContractTest {
 
     private fun request(method: Request.Method, path: String, body: String?) =
@@ -80,5 +83,37 @@ class BackwardsCompatContractTest {
         val s3Shaped = response(200, """{"pro_active":false,"expires_at":0,"signature":"x"}""")
         val report = Contract.validator.validate(request(Request.Method.GET, "/v1/entitlement", null), s3Shaped)
         if (report.hasErrors()) fail("an entitlement without state and issued_at must validate:\n$report")
+    }
+
+    /** Sprint 4 request and response fixtures, as the S4 client sends and expects them. */
+    private val s4Fixtures = listOf(
+        Triple(request(Request.Method.POST, "/v1/entitlement/verify", """{"purchase_token":"t","product_id":"pro"}"""),
+            response(200, """{"pro_active":true,"expires_at":1,"signature":"s","state":"active","issued_at":1}"""), "verify"),
+        Triple(request(Request.Method.POST, "/v1/entitlement/verify", """{"purchase_token":"t","product_id":"pro"}"""),
+            response(400, """{"error":"invalid_token"}"""), "verify 400"),
+        Triple(request(Request.Method.GET, "/v1/entitlement", null),
+            response(503, """{"error":"unavailable"}"""), "entitlement 503"),
+        Triple(request(Request.Method.POST, "/v1/account/delete", """{"client_req_id":"d1"}"""),
+            response(200, """{"deleted":true}"""), "delete"),
+    )
+
+    @Test
+    fun `every S4 fixture still validates against the S5 spec`() {
+        for ((req, resp, name) in s4Fixtures) {
+            val report = Contract.validator.validate(req, resp)
+            if (report.hasErrors()) fail("S4 fixture $name no longer validates:\n$report")
+        }
+    }
+
+    @Test
+    fun `no S3 or S4 error code was removed`() {
+        val old = listOf(
+            "too_long", "bad_request", "app_check", "auth", "quota", "rate_limited", "refused", "ai_paused",
+            "overloaded", "internal", "not_found", "method_not_allowed", "invalid_token", "unavailable",
+        )
+        for (code in old) {
+            val r = Contract.validator.validate(request(Request.Method.GET, "/v1/quota", null), response(401, """{"error":"$code"}"""))
+            if (r.hasErrors()) fail("error code $code no longer validates:\n$r")
+        }
     }
 }

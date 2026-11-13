@@ -1,0 +1,533 @@
+{
+  "word": "hello",
+  "entries": [
+    {
+      "language": {
+        "code": "en",
+        "name": "English"
+      },
+      "partOfSpeech": "interjection",
+      "pronunciations": [
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Received Pronunciation"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Received Pronunciation"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Northumbria"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General Australian"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": []
+        }
+      ],
+      "forms": [
+        {
+          "word": "hallo",
+          "tags": [
+            "alternative"
+          ]
+        },
+        {
+          "word": "hilloa",
+          "tags": [
+            "alternative",
+            "obsolete"
+          ]
+        },
+        {
+          "word": "hullo",
+          "tags": [
+            "alternative",
+            "UK"
+          ]
+        }
+      ],
+      "senses": [
+        {
+          "definition": "Fixture definition 1.",
+          "tags": [],
+          "examples": [
+            "Fixture example 1."
+          ],
+          "quotes": [],
+          "synonyms": [],
+          "antonyms": [],
+          "subsenses": []
+        },
+        {
+          "definition": "Fixture definition 2.",
+          "tags": [],
+          "examples": [
+            "Fixture example 2.",
+            "Fixture example 3."
+          ],
+          "quotes": [],
+          "synonyms": [],
+          "antonyms": [],
+          "subsenses": []
+        },
+        {
+          "definition": "Fixture definition 3.",
+          "tags": [],
+          "examples": [
+            "Fixture example 4."
+          ],
+          "quotes": [
+            {
+              "text": "Fixture quote 1.",
+              "reference": "Fixture reference 1."
+            }
+          ],
+          "synonyms": [],
+          "antonyms": [],
+          "subsenses": []
+        },
+        {
+          "definition": "(colloquial) Fixture definition 4.",
+          "tags": [
+            "colloquial"
+          ],
+          "examples": [
+            "Fixture example 5."
+          ],
+          "quotes": [
+            {
+              "text": "Fixture quote 2.",
+              "reference": "Fixture reference 2."
+            }
+          ],
+          "synonyms": [],
+          "antonyms": [],
+          "subsenses": []
+        },
+        {
+          "definition": "(UK) Fixture definition 5.",
+          "tags": [
+            "UK"
+          ],
+          "examples": [
+            "Fixture example 6."
+          ],
+          "quotes": [],
+          "synonyms": [],
+          "antonyms": [],
+          "subsenses": []
+        }
+      ],
+      "synonyms": [
+        "g'day",
+        "hey",
+        "hi"
+      ],
+      "antonyms": [
+        "bye"
+      ]
+    },
+    {
+      "language": {
+        "code": "en",
+        "name": "English"
+      },
+      "partOfSpeech": "noun",
+      "pronunciations": [
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Received Pronunciation"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Received Pronunciation"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Northumbria"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General Australian"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": []
+        }
+      ],
+      "forms": [
+        {
+          "word": "hellos",
+          "tags": [
+            "plural"
+          ]
+        },
+        {
+          "word": "helloes",
+          "tags": [
+            "plural"
+          ]
+        },
+        {
+          "word": "hallo",
+          "tags": [
+            "alternative"
+          ]
+        },
+        {
+          "word": "hilloa",
+          "tags": [
+            "alternative",
+            "obsolete"
+          ]
+        },
+        {
+          "word": "hullo",
+          "tags": [
+            "alternative",
+            "UK"
+          ]
+        }
+      ],
+      "senses": [
+        {
+          "definition": "Fixture definition 6.",
+          "tags": [],
+          "examples": [
+            "Fixture example 7."
+          ],
+          "quotes": [
+            {
+              "text": "Fixture quote 3.",
+              "reference": "Fixture reference 3."
+            }
+          ],
+          "synonyms": [],
+          "antonyms": [],
+          "subsenses": []
+        }
+      ],
+      "synonyms": [
+        "greeting"
+      ],
+      "antonyms": []
+    },
+    {
+      "language": {
+        "code": "en",
+        "name": "English"
+      },
+      "partOfSpeech": "verb",
+      "pronunciations": [
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General American"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Received Pronunciation"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Received Pronunciation"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Northumbria"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "General Australian"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": [
+            "Canada"
+          ]
+        },
+        {
+          "type": "ipa",
+          "text": "/fixture/",
+          "tags": []
+        }
+      ],
+      "forms": [
+        {
+          "word": "hellos",
+          "tags": [
+            "present",
+            "singular",
+            "third-person"
+          ]
+        },
+        {
+          "word": "helloes",
+          "tags": [
+            "present",
+            "singular",
+            "third-person"
+          ]
+        },
+        {
+          "word": "helloing",
+          "tags": [
+            "participle",
+            "present"
+          ]
+        },
+        {
+          "word": "helloed",
+          "tags": [
+            "participle",
+            "past"
+          ]
+        },
+        {
+          "word": "helloed",
+          "tags": [
+            "past"
+          ]
+        },
+        {
+          "word": "hallo",
+          "tags": [
+            "alternative"
+          ]
+        },
+        {
+          "word": "hilloa",
+          "tags": [
+            "alternative",
+            "obsolete"
+          ]
+        },
+        {
+          "word": "hullo",
+          "tags": [
+            "alternative",
+            "UK"
+          ]
+        }
+      ],
+      "senses": [
+        {
+          "definition": "(transitive) Fixture definition 7.",
+          "tags": [
+            "transitive"
+          ],
+          "examples": [],
+          "quotes": [
+            {
+              "text": "Fixture quote 4.",
+              "reference": "Fixture reference 4."
+            },
+            {
+              "text": "Fixture quote 5.",
+              "reference": "Fixture reference 5."
+            },
+            {
+              "text": "Fixture quote 6.",
+              "reference": "Fixture reference 6."
+            },
+            {
+              "text": "Fixture quote 7.",
+              "reference": "Fixture reference 7."
+            }
+          ],
+          "synonyms": [],
+          "antonyms": [],
+          "subsenses": []
+        }
+      ],
+      "synonyms": [],
+      "antonyms": []
+    }
+  ],
+  "source": {
+    "url": "https://en.wiktionary.org/wiki/hello",
+    "license": {
+      "name": "CC BY-SA 4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/"
+    }
+  }
+}

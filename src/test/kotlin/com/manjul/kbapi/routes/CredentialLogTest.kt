@@ -9,6 +9,8 @@ import com.manjul.kbapi.auth.Principal
 import com.manjul.kbapi.billing.PlayState
 import com.manjul.kbapi.billing.RtdnRoutesTest
 import com.manjul.kbapi.billing.RtdnType
+import com.manjul.kbapi.dictionary.DictionaryEntry
+import com.manjul.kbapi.dictionary.FakeDictionarySource
 import com.manjul.kbapi.testing.FakePlayApi
 import com.manjul.kbapi.testing.TestKeys
 import com.manjul.kbapi.testing.billingServices
@@ -32,7 +34,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** OPS-001: no purchase token, order id, bearer value, JWT or raw uid reaches a log line on any new route. */
+/**
+ * OPS-001: no purchase token, order id, bearer value, JWT or raw uid reaches a log line on any new route.
+ * S5: no dictionary query reaches a log line either (PC-10).
+ */
 class CredentialLogTest {
     private val root = LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME) as Logger
     private val appender = ListAppender<ILoggingEvent>()
@@ -144,5 +149,38 @@ class CredentialLogTest {
         assertEquals(4, lines.size)
         assertEquals("2", lines.first()["rtdn_type"]!!.jsonPrimitive.content)
         assertTrue(lines.all { it["uid_hash"]!!.jsonPrimitive.content == "-" })
+    }
+
+    @Test
+    fun `a dictionary lookup leaves the word in no log line, on success and on every error path`() {
+        val marker = "zyxwordleak"
+        val dict = FakeDictionarySource(mapOf(("en" to marker) to listOf(DictionaryEntry(marker, "noun", "d", null, emptyList()))))
+        testApp(services.copy(dictionary = dict)) {
+            val idToken = TestKeys.idToken(uid)
+            val appCheck = TestKeys.appCheckToken()
+            suspend fun lookup(body: String, authed: Boolean = true) = client.post("/v1/dictionary") {
+                if (authed) authedHeaders(this, idToken, appCheck)
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+            lookup("""{"word":"$marker","lang":"en"}""") // 200
+            lookup("""{"word":"$marker","lang":"en"}""") // 200 from the cache
+            lookup("""{"word":"${marker}x","lang":"en"}""") // 404
+            lookup("""{"word":"$marker $marker","lang":"en"}""") // 400 two words
+            lookup("""{"word":"$marker","lang":"$marker"}""") // 400 lang
+            lookup("""{"word":"$marker","lang":"en"""") // 400 malformed
+            lookup("""{"word":"$marker","lang":"en"}""", authed = false) // 401
+            dict.down = true
+            lookup("""{"word":"${marker}y","lang":"en"}""") // 503: WARN
+            dict.down = false
+            repeat(60) { lookup("""{"word":"$marker","lang":"en"}""") } // ends in 429
+            assertClean(idToken, appCheck, marker)
+            assertTrue(appender.list.any { it.level.toString() == "WARN" && it.loggerName == "kbapi.dictionary" })
+            val statuses = appender.list.filter { it.loggerName == ACCESS_LOGGER }
+                .map { Json.parseToJsonElement(it.formattedMessage).jsonObject }
+                .onEach { assertEquals("/v1/dictionary", it["route"]!!.jsonPrimitive.content) }
+                .map { it["status"]!!.jsonPrimitive.content }.toSet()
+            assertEquals(setOf("200", "404", "400", "401", "503", "429"), statuses)
+        }
     }
 }
